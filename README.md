@@ -13,6 +13,7 @@ Premier secteur : Secteur 3, Pôle Territorial Nord (Toulouse), 108 voies.
 |---|---|
 | `index.html` | La page et sa mise en forme |
 | `app.js` | Le fonctionnement (saisie, calculs, météo) |
+| `dictee.js` | La dictée vocale : reconnaissance des rues, de la date, de l'état et de l'équipe |
 | `secteurs.js` | La liste des rues par secteur (c'est ici qu'on ajoutera les autres secteurs) |
 | `manifest.webmanifest`, `sw.js`, `icon-*.png` | Ce qui permet d'installer l'appli comme une application |
 

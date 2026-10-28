@@ -3,7 +3,7 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.0';
+const VERSION = '1.1';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
 const WX_MAX_AGE_MS = 3 * 3600 * 1000; // on actualise la météo toutes les 3 h au plus
@@ -284,8 +284,8 @@ function rendrePriorites() {
 
   let html = '';
   if (!state.passages.length) {
-    html += `<div class="notice"><strong>Pour démarrer :</strong> va dans l'onglet <strong>Rues</strong>, coche les rues déjà désherbées
-      et saisis la date du dernier passage connu. L'appli calculera ensuite toute seule quand y retourner.</div>`;
+    html += `<div class="notice"><strong>Pour démarrer :</strong> appuie sur <strong>Dicter</strong> en bas à droite et dicte les rues déjà désherbées
+      avec la date (ex. « le 15 octobre, rue de Tunis, rue Baque »), ou coche-les dans l'onglet <strong>Rues</strong>. L'appli calculera ensuite toute seule quand y retourner.</div>`;
   }
   if (meteo.erreur) {
     html += `<div class="notice warn">La météo n'a pas pu être récupérée (${esc(meteo.erreur)}). Les calculs utilisent ${nObs ? 'les dernières données connues et ' : ''}des moyennes saisonnières. <button class="btn" data-act="meteo">Réessayer</button></div>`;

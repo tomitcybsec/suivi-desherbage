@@ -33,6 +33,7 @@
   }
 }
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html,body{margin:0}
 body{background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%}
 button,input,select,textarea{font:inherit;color:inherit}
@@ -128,6 +129,23 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#1d2a1f;color:#fff;padding:10px 16px;border-radius:10px;z-index:50;font-size:14px;box-shadow:0 4px 16px rgba(0,0,0,.25)}
 .empty{padding:20px;text-align:center;color:var(--muted)}
+
+.fab{position:fixed;right:16px;bottom:calc(20px + env(safe-area-inset-bottom));z-index:16;display:flex;align-items:center;gap:8px;background:var(--brand);color:var(--brand-ink);border:0;border-radius:999px;padding:13px 18px 13px 15px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.25);cursor:pointer}
+.fab svg,.mic svg{width:20px;height:20px;flex:none}
+.fab.haut{bottom:calc(84px + env(safe-area-inset-bottom))}
+.mic-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.mic{display:inline-flex;align-items:center;gap:8px}
+.mic.ecoute{background:var(--retard);border-color:var(--retard);color:#fff;animation:pulse 1.2s infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 6px var(--retard-bg)}}
+#dictTexte{width:100%;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:15px;resize:vertical}
+.dict-sec{margin-top:14px}
+.dict-sec h4{margin:0 0 6px;font-size:14px}
+.dict-item{display:flex;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:10px;margin-bottom:6px;background:var(--surface);cursor:pointer}
+.dict-item input{width:20px;height:20px;accent-color:var(--brand);flex:none}
+.dict-item .grow{flex:1;min-width:0}
+.dict-ambi{border:1px dashed var(--semaine);border-radius:10px;padding:8px;margin-bottom:8px}
+.dict-ambi p{margin:0 0 6px;font-size:13px;color:var(--semaine);font-weight:600}
+.dict-non{font-size:13px;color:var(--retard)}
 </style>
 </head>
 <body>
@@ -187,9 +205,35 @@ dialog::backdrop{background:rgba(0,0,0,.45)}
   <div class="dlg-foot"><button class="btn" id="drClose2">Fermer</button><button class="btn primary" id="drPassage">Passage fait</button></div>
 </dialog>
 
+<button id="fabDictee" class="fab" aria-label="Dicter un passage">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/></svg>
+  <span>Dicter</span>
+</button>
+
+<dialog id="dlgDictee">
+  <div class="dlg-head"><h3>Dicter un passage</h3><button class="x" id="dictClose" aria-label="Fermer">×</button></div>
+  <div class="dlg-body">
+    <div class="mic-row">
+      <button class="btn primary mic" id="micBtn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/></svg>
+        <span id="micLabel">Parler</span>
+      </button>
+      <span class="muted small" id="micEtat"></span>
+    </div>
+    <p class="muted small" id="micAide" style="margin:0 0 8px"></p>
+    <textarea id="dictTexte" rows="3" placeholder="Ex. : « Aujourd'hui équipe A, rue de Tunis, rue Baque et impasse Barthe, beaucoup d'herbe »"></textarea>
+    <div id="dictResultat"></div>
+  </div>
+  <div class="dlg-foot">
+    <button class="btn" id="dictAnnuler" type="button">Annuler</button>
+    <button class="btn primary" id="dictOk" type="button" disabled>Enregistrer</button>
+  </div>
+</dialog>
+
 <input type="file" id="fileImport" accept="application/json,.json" hidden>
 
 <script src="secteurs.js"></script>
 <script src="app.js"></script>
+<script src="dictee.js"></script>
 </body>
 </html>
