@@ -19,5 +19,5 @@ Premier secteur : Secteur 3, Pôle Territorial Nord (Toulouse), 108 voies.
 
 ## Données
 
-Version 1 : les passages sont enregistrés dans le navigateur de chaque appareil. Aucune donnée de passage n'est envoyée sur GitHub.
+Les passages sont enregistrés dans le navigateur de chaque appareil. Aucune donnée de passage n'est envoyée sur GitHub.
 Pensez à utiliser **Réglages → Télécharger une sauvegarde** régulièrement.

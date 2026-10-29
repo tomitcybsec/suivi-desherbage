@@ -188,8 +188,8 @@ if (typeof document !== 'undefined' && document.getElementById('dlgDictee')) (()
 
   function majFab() {
     const fab = $('#fabDictee');
-    fab.hidden = onglet === 'reglages';
-    fab.classList.toggle('haut', !$('#selbar').hidden);
+    // caché dans Réglages, et remplacé par la barre de sélection quand des rues sont cochées
+    fab.hidden = onglet === 'reglages' || !$('#selbar').hidden;
   }
   // l'appli redessine souvent : on observe les changements pour placer le bouton
   new MutationObserver(majFab).observe($('#selbar'), { attributes: true });
@@ -250,7 +250,7 @@ if (typeof document !== 'undefined' && document.getElementById('dlgDictee')) (()
     const info = s.dernier ? `dernier passage ${fmtDateCourt(s.dernier.date)}` : 'jamais saisie';
     return `<label class="dict-item"><input type="checkbox" data-dr="${r.id}" ${coche(r.id, defaut) ? 'checked' : ''}>
       <span class="grow"><strong>${esc(r.voie)}</strong>${r.troncon ? ` <span class="muted small">(${esc(r.troncon)})</span>` : ''}
-      <br><span class="muted small"><span class="classe">${r.classe}</span> ${r.longueur ? r.longueur + ' m · ' : ''}${info}</span></span></label>`;
+      <br><span class="muted small">Classe ${r.classe} · ${r.longueur ? r.longueur + ' m · ' : ''}${info}</span></span></label>`;
   }
   function afficher() {
     const out = $('#dictResultat');

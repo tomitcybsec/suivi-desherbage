@@ -3,7 +3,7 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.3';
+const VERSION = '1.4';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
 const WX_MAX_AGE_MS = 3 * 3600 * 1000; // on actualise la météo toutes les 3 h au plus
@@ -29,7 +29,7 @@ const STATUTS = {
   retard:    { label: 'En retard',      court: 'En retard' },
   semaine:   { label: 'Cette semaine',  court: '≤ 7 j' },
   quinzaine: { label: 'Sous 15 jours',  court: '≤ 15 j' },
-  ok:        { label: 'OK',             court: 'OK' },
+  ok:        { label: 'À jour',         court: 'À jour' },
   inconnu:   { label: 'Jamais saisies', court: 'Pas de passage' },
 };
 
@@ -44,6 +44,10 @@ function moisDe(s) { return Number(s.slice(5, 7)) - 1; }
 const MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
 function fmtDate(s) { if (!s) return '—'; const [y, m, d] = s.split('-'); return `${Number(d)} ${MOIS[Number(m) - 1]} ${y}`; }
 function fmtDateCourt(s) { if (!s) return '—'; const [, m, d] = s.split('-'); return `${Number(d)} ${MOIS[Number(m) - 1]}`; }
+const JOURS_COURTS = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
+function fmtJM(s) { const [, m, d] = s.split('-'); return `${Number(d)}/${Number(m)}`; }
+function fmtJour(s) { return `${JOURS_COURTS[new Date(toUTC(s)).getUTCDay()]} ${fmtJM(s)}`; }
+const virgule = (x, n = 1) => x.toFixed(n).replace('.', ',');
 function relatif(n) {
   if (n === 0) return "aujourd'hui";
   if (n === 1) return 'demain';
@@ -264,24 +268,22 @@ function majPill() {
   const d = new Date(meteo.majLe);
   afficherPill(`Météo à jour ${pad(d.getHours())}:${pad(d.getMinutes())}`);
 }
-const couleur = st => `var(--${st})`;
-
 function ligneRue(rue, { selection = false } = {}) {
-  const s = statutRue(rue);
-  const pct = s.pct < 0 ? 0 : Math.min(100, Math.round(s.pct * 100));
-  const droite = s.statut === 'inconnu'
-    ? `<span class="chip inconnu">Pas de passage</span>`
-    : `<span class="chip ${s.statut}">${s.statut === 'retard' ? 'En retard' : (s.echeance ? fmtDateCourt(s.echeance) : '> 2 ans')}</span>
-       <div class="muted" style="margin-top:3px">fait le ${fmtDateCourt(s.dernier.date)}</div>`;
+  const s = statutRue(rue), today = aujourdhui();
+  let droite, cls = s.statut;
+  if (s.statut === 'inconnu') droite = 'Pas de passage';
+  else if (s.statut === 'retard') { const j = Math.max(0, ecartJours(s.echeance || today, today)); droite = `<span class="tag">${j ? `Retard ${j} j` : 'À faire'}</span>`; }
+  else if (!s.echeance) droite = '> 2 ans';
+  else droite = ecartJours(today, s.echeance) <= 15 ? fmtJour(s.echeance) : fmtDateCourt(s.echeance);
   const coche = selection ? `<input type="checkbox" data-sel="${rue.id}" ${ui.selection.has(rue.id) ? 'checked' : ''} aria-label="Sélectionner ${esc(rue.voie)}">` : '';
+  const meta = [`Classe ${rue.classe}`, rue.troncon ? esc(rue.troncon) : null, rue.longueur ? rue.longueur + ' m' : null, s.dernier ? `fait le ${fmtJM(s.dernier.date)}` : null].filter(Boolean).join(' · ');
   return `<div class="rue" data-rue="${rue.id}" role="button" tabindex="0">
     ${coche}
     <div class="main">
       <div class="nom">${esc(rue.voie)}</div>
-      <div class="meta"><span class="classe" title="Classe pôle">${rue.classe}</span> ${rue.troncon ? esc(rue.troncon) + ' · ' : ''}${rue.longueur ? rue.longueur + ' m' : 'longueur ?'}</div>
-      ${s.statut !== 'inconnu' ? `<div class="bar" title="${pct} % du seuil"><i style="width:${pct}%;background:${couleur(s.statut)}"></i></div>` : ''}
+      <div class="meta">${meta}</div>
     </div>
-    <div class="right">${droite}</div>
+    <div class="right ${cls} n">${droite}</div>
   </div>`;
 }
 
@@ -305,20 +307,15 @@ function rendrePriorites() {
 
   let html = '';
   if (!state.passages.length) {
-    html += `<div class="notice"><strong>Pour démarrer :</strong> appuie sur <strong>Dicter</strong> en bas à droite et dicte les rues déjà désherbées
+    html += `<div class="notice"><strong>Pour démarrer :</strong> appuie sur <strong>Dicter un passage</strong> en bas de l'écran et dicte les rues déjà désherbées
       avec la date (ex. « le 15 octobre, rue de Tunis, rue Baque »), ou coche-les dans l'onglet <strong>Rues</strong>. L'appli calculera ensuite toute seule quand y retourner.</div>`;
   }
   if (meteo.erreur) {
     html += `<div class="notice warn">La météo n'a pas pu être récupérée (${esc(meteo.erreur)}). Les calculs utilisent ${nObs ? 'les dernières données connues et ' : ''}des moyennes saisonnières. <button class="btn" data-act="meteo">Réessayer</button></div>`;
   }
-  html += `<div class="tiles">${Object.keys(STATUTS).map(k => `<button class="tile ${k}" data-goto="${k}"><b>${groupes[k].length}</b><span>${STATUTS[k].label}</span></button>`).join('')}</div>`;
-  html += `<div class="card" style="margin-top:12px"><strong>Météo des 7 derniers jours</strong> <span class="muted small">— ${esc(secteur()?.pole || '')}</span>
-    <div class="meteo">
-      <div><span class="muted small">Temp. moyenne</span><b>${(tm / 7).toFixed(1)} °C</b></div>
-      <div><span class="muted small">Pluie cumulée</span><b>${pluie.toFixed(1)} mm</b></div>
-      <div><span class="muted small">Pousse de l'herbe</span><b>${pousse}</b></div>
-    </div>
-    ${nObs < 7 ? `<p class="muted small" style="margin:8px 0 0">${7 - nObs} jour(s) estimé(s) sur moyennes saisonnières.</p>` : ''}</div>`;
+  html += `<div class="resume">${['retard', 'semaine', 'quinzaine'].map(k => `<button class="${k}" data-goto="${k}"><b>${groupes[k].length}</b><span>${k === 'retard' ? 'en retard' : k === 'semaine' ? 'cette semaine' : 'sous 15 jours'}</span></button>`).join('')}</div>`;
+  html += `<p class="resume-2">${groupes.ok.length} à jour${groupes.inconnu.length ? ` · <button data-goto="inconnu">${groupes.inconnu.length} jamais saisie${groupes.inconnu.length > 1 ? 's' : ''}</button>` : ''}</p>`;
+  html += `<p class="meteo-ligne">Météo 7 jours : ${virgule(tm / 7)} °C · ${virgule(pluie)} mm · pousse ${pousse}${nObs < 7 ? ` <span>(${7 - nObs} j estimé${7 - nObs > 1 ? 's' : ''} sur moyennes)</span>` : ''}</p>`;
 
   for (const k of ['retard', 'semaine', 'quinzaine', 'ok']) {
     if (!groupes[k].length) continue;
@@ -481,7 +478,7 @@ function ouvrirRue(id) {
       <dt>Statut</dt><dd><span class="chip ${s.statut}">${STATUTS[s.statut].label}</span></dd>
       <dt>Repousse estimée</dt><dd>${pct} % du seuil (${Math.round(s.cumul)} / ${Math.round(s.seuil)} unités)</dd>
       <dt>Prochain passage</dt><dd>${s.echeance ? `${fmtDate(s.echeance)} (${relatif(s.jours)})` : 'pas avant 2 ans'}${s.echeance && s.prevFiable === 'normale' && s.jours > 0 ? ' <span class="muted small">— estimé sur moyennes saisonnières</span>' : ''}</dd>
-      <dt>Apprentissage</dt><dd>${s.nObs ? `seuil ajusté × ${s.coef.toFixed(2)} d'après ${s.nObs} observation${s.nObs > 1 ? 's' : ''}` : 'pas encore d’observation (il faut au moins 2 passages avec un état constaté)'}</dd>
+      <dt>Apprentissage</dt><dd>${s.nObs ? `seuil ajusté × ${virgule(s.coef, 2)} d'après ${s.nObs} observation${s.nObs > 1 ? 's' : ''}` : 'pas encore d’observation (il faut au moins 2 passages avec un état constaté)'}</dd>
     </dl>`;
   }
   const ps = passagesDe(id).slice().reverse();

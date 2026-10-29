@@ -1,6 +1,6 @@
 /* Service worker : permet d'installer l'appli et de l'ouvrir même sans réseau.
    Stratégie "réseau d'abord" : la dernière version en ligne est toujours prioritaire. */
-const CACHE = 'desherbage-v2';
+const CACHE = 'desherbage-v3';
 const FICHIERS = ['./', 'index.html', 'app.js', 'secteurs.js', 'dictee.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
