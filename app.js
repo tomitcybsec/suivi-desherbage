@@ -3,7 +3,7 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.1';
+const VERSION = '1.2';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
 const WX_MAX_AGE_MS = 3 * 3600 * 1000; // on actualise la météo toutes les 3 h au plus
@@ -115,10 +115,15 @@ async function majMeteo(force = false) {
     try {
       const pos = { latitude: s.lat, longitude: s.lon };
       integrer(await appelMeteo('https://api.open-meteo.com/v1/forecast', { ...pos, past_days: 92, forecast_days: 16 }), true);
-      const debut = besoinArchive();
+      // complète les jours passés manquants (trous de la prévision ou passages anciens) avec l'archive
+      const trous = joursManquants(addJours(aujourdhui(), -92), addJours(aujourdhui(), -2));
+      const ancien = besoinArchive();
+      const debut = [ancien, trous[0]].filter(Boolean).sort()[0];
       if (debut) {
-        const fin = addJours(aujourdhui(), -3);
-        if (debut <= fin) integrer(await appelMeteo('https://archive-api.open-meteo.com/v1/archive', { ...pos, start_date: debut, end_date: fin }), false);
+        const fin = trous.length ? trous[trous.length - 1] : addJours(aujourdhui(), -3);
+        try {
+          if (debut <= fin) integrer(await appelMeteo('https://archive-api.open-meteo.com/v1/archive', { ...pos, start_date: debut, end_date: fin }), false);
+        } catch { /* l'archive est un complément : on garde la prévision même si elle échoue */ }
       }
       meteo.majLe = Date.now(); meteo.erreur = null;
     } catch (e) {
@@ -130,6 +135,11 @@ async function majMeteo(force = false) {
   return meteoEnCours;
 }
 // date la plus ancienne dont on a besoin et qui manque dans le cache (passages > 92 jours)
+function joursManquants(de, a) {
+  const l = [];
+  for (let d = de; d <= a; d = addJours(d, 1)) if (!meteo.jours[d]) l.push(d);
+  return l;
+}
 function besoinArchive() {
   const ids = new Set(secteur()?.rues.map(r => r.id));
   const dates = state.passages.filter(p => ids.has(p.rueId)).map(p => p.date);
@@ -395,6 +405,9 @@ function rendreReglages() {
         <dt>Point météo</dt><dd>${esc(secteur()?.pole)} (${secteur()?.lat}, ${secteur()?.lon})</dd>
         <dt>Dernière mise à jour</dt><dd>${meteo.majLe ? new Date(meteo.majLe).toLocaleString('fr-FR') : 'jamais'}</dd>
         <dt>Jours en mémoire</dt><dd>${nJours}</dd>
+        ${nJours ? (() => { const ks = Object.keys(meteo.jours).sort(); const manq = joursManquants(addJours(aujourdhui(), -30), addJours(aujourdhui(), -1)).length;
+          return `<dt>Période couverte</dt><dd>du ${fmtDate(ks[0])} au ${fmtDate(ks[ks.length - 1])}</dd>
+          <dt>Jours manquants (30 derniers jours)</dt><dd>${manq}${manq ? ' — remplacés par des moyennes' : ''}</dd>`; })() : ''}
         ${meteo.erreur ? `<dt>Erreur</dt><dd>${esc(meteo.erreur)}</dd>` : ''}
       </dl>
       <button class="btn" data-act="meteo">Actualiser maintenant</button>
