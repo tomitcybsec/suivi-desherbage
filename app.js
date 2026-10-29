@@ -3,7 +3,7 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.2';
+const VERSION = '1.3';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
 const WX_MAX_AGE_MS = 3 * 3600 * 1000; // on actualise la météo toutes les 3 h au plus
@@ -121,9 +121,20 @@ async function majMeteo(force = false) {
       const debut = [ancien, trous[0]].filter(Boolean).sort()[0];
       if (debut) {
         const fin = trous.length ? trous[trous.length - 1] : addJours(aujourdhui(), -3);
-        try {
-          if (debut <= fin) integrer(await appelMeteo('https://archive-api.open-meteo.com/v1/archive', { ...pos, start_date: debut, end_date: fin }), false);
-        } catch { /* l'archive est un complément : on garde la prévision même si elle échoue */ }
+        // deux sources possibles ; la 2e ne sert que si la 1re laisse des trous.
+        // Le résultat est gardé pour être affiché dans Réglages (diagnostic).
+        const avant = Object.keys(meteo.jours).length, detail = [];
+        for (const src of ['https://archive-api.open-meteo.com/v1/archive', 'https://historical-forecast-api.open-meteo.com/v1/forecast']) {
+          const reste = debut <= fin ? joursManquants(debut, fin) : [];
+          if (!reste.length) break;
+          const nom = src.includes('archive') ? 'archive' : 'historique';
+          const n0 = Object.keys(meteo.jours).length;
+          try {
+            integrer(await appelMeteo(src, { ...pos, start_date: reste[0], end_date: reste[reste.length - 1] }), false);
+            detail.push(`${nom} : +${Object.keys(meteo.jours).length - n0} j`);
+          } catch (e) { detail.push(`${nom} : échec (${e.message || e})`); }
+        }
+        meteo.complement = { le: Date.now(), plage: `${debut} → ${fin}`, ajoutes: Object.keys(meteo.jours).length - avant, detail: detail.join(' · ') || 'rien à compléter' };
       }
       meteo.majLe = Date.now(); meteo.erreur = null;
     } catch (e) {
@@ -408,6 +419,7 @@ function rendreReglages() {
         ${nJours ? (() => { const ks = Object.keys(meteo.jours).sort(); const manq = joursManquants(addJours(aujourdhui(), -30), addJours(aujourdhui(), -1)).length;
           return `<dt>Période couverte</dt><dd>du ${fmtDate(ks[0])} au ${fmtDate(ks[ks.length - 1])}</dd>
           <dt>Jours manquants (30 derniers jours)</dt><dd>${manq}${manq ? ' — remplacés par des moyennes' : ''}</dd>`; })() : ''}
+        ${meteo.complement ? `<dt>Complément passé</dt><dd>${esc(meteo.complement.detail)} <span class="muted">(${esc(meteo.complement.plage)})</span></dd>` : ''}
         ${meteo.erreur ? `<dt>Erreur</dt><dd>${esc(meteo.erreur)}</dd>` : ''}
       </dl>
       <button class="btn" data-act="meteo">Actualiser maintenant</button>
