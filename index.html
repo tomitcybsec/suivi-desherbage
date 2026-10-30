@@ -98,6 +98,9 @@ h2 .muted{font-weight:400}
 .btn:disabled{opacity:.45;cursor:default}
 .selbar{position:fixed;left:0;right:0;bottom:0;background:var(--bg);border-top:1px solid var(--line);padding:10px 0 calc(10px + env(safe-area-inset-bottom));z-index:15}
 .selbar .wrap{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+/* cartes du planning : boutons sur une ligne */
+.plan .actions{flex-wrap:nowrap;gap:6px}
+.plan .actions .btn{padding:8px 11px;font-size:14px}
 /* sélecteur de vue (onglet Suivi) */
 .seg{display:flex;gap:0;margin-bottom:10px;border:1px solid var(--text)}
 .seg .btn{flex:1;border:0;padding:11px 4px;font-size:14px}
@@ -248,5 +251,6 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 <script src="app.js"></script>
 <script src="dictee.js"></script>
 <script src="tableau.js"></script>
+<script src="planning.js"></script>
 </body>
 </html>

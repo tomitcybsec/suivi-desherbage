@@ -65,14 +65,8 @@ const Tableau = (() => {
   }
 
   function rattacher(lieu, sect) {
-    let texte = String(lieu || '');
-    const n = ' ' + N(texte) + ' ';
-    const zones = (sect.zones || []).filter(z => z.motifs.some(m => n.includes(N(m)))).map(z => z.nom);
-    for (const a of sect.alias || []) if (a.motifs.some(m => n.includes(' ' + N(m) + ' '))) texte += ', ' + a.voie;
-    const r = Dictee.analyser(texte, sect.rues, '2000-01-01');
-    const connus = [...(sect.zones || []).flatMap(z => z.motifs), ...(sect.alias || []).flatMap(a => a.motifs)].map(N);
-    const nonTrouves = r.nonTrouves.filter(t => !connus.some(m => t.includes(m) || m.includes(t)));
-    return { rueIds: r.rues.map(x => x.id), ambigus: r.ambigus.map(l => l.map(x => x.voie)), nonTrouves, zones };
+    const r = Dictee.analyser(String(lieu || ''), sect.rues, '2000-01-01', { alias: sect.alias, zones: sect.zones });
+    return { rueIds: r.rues.map(x => x.id), ambigus: r.ambigus.map(l => l.map(x => x.voie)), nonTrouves: r.nonTrouves, zones: r.zones };
   }
 
   // lignes de tableur (tableau de tableaux) -> interventions
@@ -126,7 +120,7 @@ if (typeof document !== 'undefined' && document.getElementById('view')) (() => {
   const TYPES_COURTS = s => s || 'Autre';
   const STATUTS_TXT = { realise: 'Réalisé', prevu: 'Prévu', encours: 'En cours', reporte: 'Reporté', annule: 'Annulé', autre: '?', '': '—' };
   state.interventions = state.interventions || [];
-  ui.suiviVue = ui.suiviVue || (state.interventions.length ? 'recap' : 'passages');
+  ui.suiviVue = ui.suiviVue || 'planning';
 
   // fichier + fenêtre d'aperçu créés ici pour ne pas alourdir index.html
   const input = Object.assign(document.createElement('input'), { type: 'file', accept: '.xlsx,.xls,.ods,.csv', hidden: true });
@@ -264,14 +258,14 @@ if (typeof document !== 'undefined' && document.getElementById('view')) (() => {
   }
 
   window.rendreSuivi = function () {
-    const vues = { recap: 'Récap par rue', journal: 'Journal', passages: 'Passages herbe' };
+    const vues = { planning: 'Planning', recap: 'Récap', journal: 'Journal', passages: 'Herbe' };
     const imp = state.importTableau;
     const tete = `<div class="seg">
       ${Object.entries(vues).map(([k, t]) => `<button class="btn${ui.suiviVue === k ? ' primary' : ''}" data-suivi="${k}">${t}</button>`).join('')}
       </div>
       <p class="muted small" style="margin:-4px 0 12px">${imp ? `Tableau « ${esc(imp.fichier)} » importé le ${new Date(imp.le).toLocaleDateString('fr-FR')} à ${new Date(imp.le).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}. ` : ''}<button class="btn" data-act="importTableau">${imp ? 'Réimporter le tableau' : 'Importer mon tableau de suivi'}</button></p>`;
     if (ui.suiviVue === 'passages') { rendreHistorique(); view.insertAdjacentHTML('afterbegin', tete); return; }
-    view.innerHTML = tete + (ui.suiviVue === 'journal' ? vueJournal() : vueRecap());
+    view.innerHTML = tete + (ui.suiviVue === 'planning' && typeof vuePlanning === 'function' ? vuePlanning() : ui.suiviVue === 'journal' ? vueJournal() : vueRecap());
   };
 
   // interventions du tableau pour une rue (affichées dans sa fiche)

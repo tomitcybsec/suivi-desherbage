@@ -106,33 +106,108 @@ const Dictee = (() => {
     return groupes;
   }
 
-  function lireDate(texte, today) {
+  // sens : 'passe' (saisie d'un passage), 'futur' (planning), 'auto' (date explicite la plus proche d'aujourd'hui)
+  function lireDate(texte, today, sens = 'passe') {
     const n = ' ' + norm(texte) + ' ';
     const ajout = (s, k) => { const d = new Date(Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10) + k)); return d.toISOString().slice(0, 10); };
+    const ecart = (a, b) => Math.abs((Date.parse(a) - Date.parse(b)) / 86400000);
+    const choisir = (s, y) => { // s = date avec l'année courante
+      const avant = `${y - 1}${s.slice(4)}`, apres = `${y + 1}${s.slice(4)}`;
+      if (sens === 'futur') return s >= today ? s : apres;
+      if (sens === 'passe') return s <= today ? s : avant;
+      return [avant, s, apres].sort((u, v) => ecart(u, today) - ecart(v, today))[0];
+    };
+    if (/ aujourd hui /.test(n)) return today;
+    if (/ apres demain /.test(n)) return ajout(today, 2);
+    if (/ demain /.test(n)) return ajout(today, 1);
     if (/ avant hier /.test(n)) return ajout(today, -2);
     if (/ hier /.test(n)) return ajout(today, -1);
     let m = n.match(new RegExp(` (\\d{1,2}|1er|premier) (${MOIS.join('|')})(?: (\\d{4}))? `));
     if (m) {
       const j = /^\d+$/.test(m[1]) ? +m[1] : 1, mo = MOIS.indexOf(m[2]) + 1;
-      let y = m[3] ? +m[3] : +today.slice(0, 4);
-      let s = `${y}-${String(mo).padStart(2, '0')}-${String(j).padStart(2, '0')}`;
-      if (!m[3] && s > today) s = `${y - 1}${s.slice(4)}`;
-      if (j >= 1 && j <= 31) return s;
+      const y = +today.slice(0, 4);
+      const s = `${m[3] || y}-${String(mo).padStart(2, '0')}-${String(j).padStart(2, '0')}`;
+      if (j >= 1 && j <= 31) return m[3] ? s : choisir(s, y);
     }
     m = String(texte).match(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/);
-    if (m) {
-      let y = m[3] ? (m[3].length === 2 ? 2000 + +m[3] : +m[3]) : +today.slice(0, 4);
-      let s = `${y}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
-      if (!m[3] && s > today) s = `${y - 1}${s.slice(4)}`;
-      if (+m[1] >= 1 && +m[1] <= 31 && +m[2] >= 1 && +m[2] <= 12) return s;
+    if (m && +m[1] >= 1 && +m[1] <= 31 && +m[2] >= 1 && +m[2] <= 12) {
+      const y = +today.slice(0, 4);
+      const yy = m[3] ? (m[3].length === 2 ? 2000 + +m[3] : +m[3]) : y;
+      const s = `${yy}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+      return m[3] ? s : choisir(s, y);
     }
-    for (let k = 0; k < 7; k++) {
-      const d = ajout(today, -k);
+    const futurJour = sens === 'futur' || / prochain/.test(n);
+    for (let k = futurJour ? 1 : 0; futurJour ? k <= 7 : k < 7; k++) {
+      const d = ajout(today, futurJour ? k : -k);
       const nomJour = JOURS[new Date(d + 'T12:00:00Z').getUTCDay()];
       if (n.includes(' ' + nomJour + ' ')) return d;
     }
     return null;
   }
+  // ce que la phrase demande : planifier, valider une intervention prévue, la reporter, l'annuler
+  function lireIntention(texte) {
+    const n = ' ' + norm(texte) + ' ';
+    if (/ annul/.test(n)) return 'annuler';
+    if (/ report| decal/.test(n)) return 'reporter';
+    if (/ c est fait | cest fait | (est |c est )?(termine|terminee|fini|finie|realise|realisee) | fait /.test(n)) return 'valider';
+    if (/ (je )?prevoi| prevu| prevoir| planifi| programm| on fera | il faudra | a faire /.test(n)) return 'planifier';
+    return null;
+  }
+  const TYPES_INTER = [
+    { re: / coordonn/, type: 'Coordonné balayeuse' },
+    { re: / pompage| pomper| pompe /, type: 'Pompage de feuilles' },
+    { re: / rotofil| roto fil| desherb| debroussaill/, type: 'Rotofil herbe' },
+    { re: / balayage manuel| balayage /, type: 'Balayage manuel' },
+    { re: / incident| urgence| voiture brulee/, type: 'Incident / urgence' },
+  ];
+  function lireType(texte) {
+    const n = ' ' + norm(texte) + ' ';
+    for (const t of TYPES_INTER) if (t.re.test(n)) return t.type;
+    return null;
+  }
+  const ROLES = [
+    { motifs: ['micro balayeuse', 'microbalayeuse'], role: 'micro-balayeuse', mat: 'micro-balayeuse' },
+    { motifs: ['balayeuse'], role: 'balayeuse', mat: 'balayeuse' },
+    { motifs: ['rotofil', 'roto fil', 'debroussailleuse'], role: 'rotofil', mat: 'rotofil' },
+    { motifs: ['souffleur', 'souffleuse', 'soufflage'], role: 'souffleur à dos', mat: 'souffleur à dos' },
+    { motifs: ['chauffeur'], role: 'chauffeur', mat: null },
+    { motifs: ['camion'], role: 'camion', mat: 'camion' },
+    { motifs: ['pompe', 'pompage'], role: 'pompe', mat: 'gros camion' },
+    { motifs: ['balai', 'balayage manuel'], role: 'balayage manuel', mat: 'balayage manuel' },
+  ];
+  // prénoms connus (annuaire local) + rôle dit juste après : « Michel au rotofil, Pascal en balayeuse »
+  function lireAgents(texte, annuaire = []) {
+    const T = norm(texte).split(' ').filter(Boolean), out = [];
+    const cles = annuaire.map(a => ({ ...a, toks: a.cle.split(' ') }));
+    const estAgent = (i) => cles.filter(a => {
+      const bout = T.slice(i, i + a.toks.length).join(' ');
+      if (bout === a.cle) return true;
+      return a.toks.length === 1 && a.cle.length >= 5 && T[i] && T[i][0] === a.cle[0] && lev(T[i], a.cle) <= 1;
+    });
+    for (let i = 0; i < T.length; i++) {
+      if (i > 0 && TYPES[T[i - 1]]) continue; // « rue Pierre Cazeneuve » : Pierre est un nom de rue, pas un agent
+      const c = estAgent(i); if (!c.length) continue;
+      let nom = c[0].prenom, saut = c[0].toks.length - 1;
+      const suite = ' ' + T.slice(i + c[0].toks.length, i + c[0].toks.length + 3).join(' ') + ' ';
+      const avecNom = c.find(x => x.nomFam && suite.startsWith(' ' + norm(x.nomFam) + ' '));
+      if (avecNom) { nom = avecNom.complet; saut += norm(avecNom.nomFam).split(' ').length; }
+      const fen = [];
+      for (let j = i + saut + 1; j < Math.min(T.length, i + saut + 6); j++) { if (estAgent(j).length) break; fen.push(T[j]); }
+      const f = ' ' + fen.join(' ') + ' ';
+      const r = ROLES.find(r => r.motifs.some(m => f.includes(' ' + m)));
+      if (!out.some(o => o.nom === nom)) out.push({ nom, role: r ? r.role : null, mat: r ? r.mat : null });
+      i += saut;
+    }
+    return out;
+  }
+  const formatAgents = ags => ags.map(a => a.role ? `${a.nom} (${a.role})` : a.nom).join(', ');
+  function materiel(ags) {
+    const n = {};
+    ags.forEach(a => { if (a.mat) n[a.mat] = (n[a.mat] || 0) + 1; });
+    const l = Object.entries(n).map(([m, k]) => k > 1 ? `${k} ${m.replace(/^(\S+)/, '$1s')}` : m).join(', ');
+    return l ? l[0].toUpperCase() + l.slice(1) : '';
+  }
+
   function lireEtat(texte) {
     const n = ' ' + norm(texte) + ' ';
     if (/ beaucoup /.test(n) || / plein /.test(n) || / envahi/.test(n)) return 'beaucoup';
@@ -148,18 +223,31 @@ const Dictee = (() => {
   }
 
   // analyse complète
-  function analyser(texte, rues, today) {
+  function analyser(texte, rues, today, opts = {}) {
     const idx = indexer(rues);
+    const n0 = ' ' + norm(texte) + ' ';
+    const zones = (opts.zones || []).filter(z => z.motifs.some(m => n0.includes(norm(m)))).map(z => z.nom);
+    for (const a of opts.alias || []) if (a.motifs.some(m => n0.includes(' ' + norm(m) + ' '))) texte += ', ' + a.voie;
     const surs = new Map(), ambigus = [], nonTrouves = [];
     const motsIgnores = new Set(['aujourd', 'hui', 'hier', 'avant', 'ce', 'matin', 'soir', 'apres', 'midi', 'equipe', 'on', 'a', 'fait', 'faits', 'passage', 'passe',
       'beaucoup', 'herbe', 'un', 'peu', 'propre', 'presque', 'et', 'de', 'la', 'le', 'les', 'des', 'du', 'd', 'l', 'en', 'il', 'y', 'avait', 'c', 'etait', 'tres', 'pas', 'mal', 'rien', 'plein',
-      ...MOIS, ...JOURS]);
-    for (const T of segmenter(texte)) {
+      ...MOIS, ...JOURS, 'demain', 'prochain', 'prochaine', 'semaine', 'je', 'prevois', 'prevoit', 'prevu', 'prevue', 'prevoir', 'planifie', 'sur', 'avec', 'pour', 'au', 'aux',
+      'rotofil', 'souffleur', 'souffleurs', 'balayeuse', 'micro', 'camion', 'camions', 'chauffeur', 'pompage', 'pompe', 'coordonne', 'balayage', 'manuel', 'est', 'termine', 'fini', 'reporte', 'annule', 'decale',
+      ...(opts.ignorer || [])]);
+    const connus = [...(opts.zones || []).flatMap(z => z.motifs), ...(opts.alias || []).flatMap(a => a.motifs)].map(norm);
+    // mots qui ne peuvent pas être des noms de rue (jours, mois, matériel, verbes) : écartés avant la recherche,
+    // sinon « mardi » ressemble à « Marty » et « coordonné » à « Cordeau »
+    const STOP = new Set([...JOURS, ...MOIS, 'coordonne', 'coordonnee', 'rotofil', 'balayeuse', 'souffleur', 'souffleurs', 'pompage', 'pompe', 'balayage',
+      'prevois', 'prevoit', 'prevu', 'prevue', 'prevoir', 'planifie', 'demain', 'prochain', 'prochaine', 'fait', 'termine', 'reporte', 'annule', 'decale', 'chauffeur', 'camion', ...(opts.ignorer || [])]);
+    for (const T0 of segmenter(texte)) {
+      const T = T0.filter(t => !STOP.has(t));
+      if (!T.length) continue;
       const groupes = analyserSegment(T, idx);
       if (!groupes.length) {
         const reste = T.filter((t, i) => !motsIgnores.has(t) && !/^\d+$/.test(t) && t.length > 1 && T[i - 1] !== 'equipe' && !(TYPES[t] && T.length === 1));
         const equipeSeule = T[0] === 'equipe';
-        if (reste.length && !equipeSeule) nonTrouves.push(T.join(' '));
+        const deZone = connus.some(m => T.join(' ').includes(m) || m.includes(T.join(' ')));
+        if (reste.length && !equipeSeule && !deZone) nonTrouves.push(T.join(' '));
         continue;
       }
       for (const g of groupes) {
@@ -169,10 +257,10 @@ const Dictee = (() => {
     }
     // une ambiguïté déjà résolue ailleurs dans la phrase est retirée
     const amb = ambigus.filter(l => !l.some(r => surs.has(r.id)));
-    return { rues: [...surs.values()], ambigus: amb, nonTrouves, date: lireDate(texte, today), etat: lireEtat(texte), equipe: lireEquipe(texte) };
+    return { rues: [...surs.values()], ambigus: amb, nonTrouves, zones, date: lireDate(texte, today, opts.sens || 'passe'), etat: lireEtat(texte), equipe: lireEquipe(texte) };
   }
 
-  return { analyser, norm, phon, segmenter };
+  return { analyser, norm, phon, segmenter, lireDate, lireIntention, lireType, lireAgents, formatAgents, materiel, lireEtat };
 })();
 if (typeof module !== 'undefined') module.exports = Dictee;
 
@@ -184,7 +272,10 @@ if (typeof document !== 'undefined' && document.getElementById('dlgDictee')) (()
   let rec = null;
   let res = null;
   const choix = new Map();            // id rue -> coché ou non (choix manuels)
-  const champs = { date: null, equipe: null, etat: null, touche: {} };
+  const champs = { mode: 'passage', date: null, equipe: null, etat: null, type: '', agents: '', materiel: '', observations: '', touche: {} };
+  const choixPlan = new Map();        // id intervention prévue -> cochée ou non (mode Valider)
+  const MODES = { passage: 'Passage fait', planifier: 'Planifier', valider: 'Valider un prévu' };
+  const TYPES_LISTE = ['Rotofil herbe', 'Coordonné balayeuse', 'Pompage de feuilles', 'Balayage manuel', 'Incident / urgence', 'Autre'];
 
   function majFab() {
     const fab = $('#fabDictee');
@@ -195,11 +286,12 @@ if (typeof document !== 'undefined' && document.getElementById('dlgDictee')) (()
   new MutationObserver(majFab).observe($('#selbar'), { attributes: true });
   document.querySelector('nav.tabs').addEventListener('click', () => setTimeout(majFab));
 
-  function ouvrir() {
-    zone.value = ''; res = null; choix.clear(); direct(''); etat('');
-    champs.date = null; champs.equipe = null; champs.etat = null; champs.touche = {};
+  function ouvrir(mode) {
+    zone.value = ''; res = null; choix.clear(); choixPlan.clear(); direct(''); etat('');
+    Object.assign(champs, { mode: 'passage', date: null, equipe: null, etat: null, type: '', agents: '', materiel: '', observations: '', touche: {} });
+    if (typeof mode === 'string' && MODES[mode]) { champs.mode = mode; champs.touche.mode = true; }
     $('#micAide').textContent = SR
-      ? 'Appuie sur « Parler » et dicte : date, équipe, rues, état de l\'herbe. Fais des pauses, le micro reste ouvert jusqu\'à « Stop ». Vérifie la liste avant d\'enregistrer.'
+      ? 'Dicte un passage fait (« hier, rue de Tunis, beaucoup d\'herbe »), une intervention à prévoir (« mardi, je prévois rotofil rue Baque, Michel au rotofil ») ou une validation (« rotofil rue Baque, c\'est fait »). Le micro reste ouvert jusqu\'à « Stop ».'
       : 'Ce navigateur ne fait pas la dictée (c\'est le cas de Firefox). Utilise le micro du clavier de ton téléphone dans la zone ci-dessous, ou ouvre l\'appli dans Chrome ou Edge. Tu peux aussi taper les rues.';
     btn.hidden = !SR; $('#micUndo').hidden = !SR;
     $('#micEtat').textContent = '';
@@ -310,12 +402,37 @@ if (typeof document !== 'undefined' && document.getElementById('dlgDictee')) (()
     analyser();
   }
 
+  const P = () => (typeof Planning !== 'undefined' ? Planning : null);
+  let cands = [];
   function analyser() {
-    const rues = secteur()?.rues || [];
-    res = Dictee.analyser(zone.value, rues, aujourdhui());
-    if (!champs.touche.date) champs.date = res.date || aujourdhui();
-    if (!champs.touche.equipe) champs.equipe = res.equipe ?? (champs.equipe ?? state.equipe ?? '');
+    const sect = secteur(), rues = sect?.rues || [], today = aujourdhui(), texte = zone.value;
+    const intention = Dictee.lireIntention(texte);
+    const annu = P() ? P().annuaire() : [];
+    const opts = { alias: sect?.alias, zones: sect?.zones, ignorer: P() ? P().motsAgents() : [] };
+    // mode deviné, sauf si l'utilisateur l'a choisi
+    let mode = champs.mode;
+    const dFutur = Dictee.lireDate(texte, today, 'futur'), dAuto = Dictee.lireDate(texte, today, 'auto');
+    res = Dictee.analyser(texte, rues, today, { ...opts, sens: intention === 'planifier' ? 'futur' : 'auto' });
+    const type = Dictee.lireType(texte);
+    const agents = Dictee.lireAgents(texte, annu);
+    cands = P() ? P().candidats(res.rues.map(r => r.id), res.zones, type, agents.map(a => a.nom)) : [];
+    if (!champs.touche.mode) {
+      if (['valider', 'reporter', 'annuler'].includes(intention) && cands.length) mode = 'valider';
+      else if (intention === 'planifier' || (dAuto && dAuto > today)) mode = 'planifier';
+      else mode = 'passage';
+      champs.mode = mode;
+    }
+    if (!champs.touche.date) {
+      if (mode === 'planifier') champs.date = (intention === 'planifier' ? dFutur : dAuto) || addJours(today, 1);
+      else if (mode === 'valider') champs.date = intention === 'reporter' ? (dFutur || addJours(today, 1)) : today;
+      else champs.date = res.date && res.date <= today ? res.date : today;
+    }
+    if (!champs.touche.statut) champs.statut = intention === 'reporter' ? 'reporte' : intention === 'annuler' ? 'annule' : 'realise';
+    if (!champs.touche.equipe) champs.equipe = res.equipe ?? (agents.length ? Dictee.formatAgents(agents) : (champs.equipe ?? state.equipe ?? ''));
     if (!champs.touche.etat) champs.etat = res.etat ?? '';
+    if (!champs.touche.type) champs.type = type || (champs.type || '');
+    if (!champs.touche.agents) champs.agents = Dictee.formatAgents(agents);
+    if (!champs.touche.materiel) champs.materiel = Dictee.materiel(agents);
     afficher();
   }
   const coche = (id, defaut) => choix.has(id) ? choix.get(id) : defaut;
@@ -325,6 +442,10 @@ if (typeof document !== 'undefined' && document.getElementById('dlgDictee')) (()
     res.ambigus.forEach(l => l.forEach(r => { if (coche(r.id, false) && !ids.includes(r.id)) ids.push(r.id); }));
     return ids;
   }
+  function plansRetenus() {
+    const best = cands.length ? cands[0].score : 0;
+    return cands.filter(c => choixPlan.has(c.p.id) ? choixPlan.get(c.p.id) : c.score === best).map(c => c.p);
+  }
   function ligne(r, defaut) {
     const s = statutRue(r);
     const info = s.dernier ? `dernier passage ${fmtDateCourt(s.dernier.date)}` : 'jamais saisie';
@@ -332,31 +453,60 @@ if (typeof document !== 'undefined' && document.getElementById('dlgDictee')) (()
       <span class="grow"><strong>${esc(r.voie)}</strong>${r.troncon ? ` <span class="muted small">(${esc(r.troncon)})</span>` : ''}
       <br><span class="muted small">Classe ${r.classe} · ${r.longueur ? r.longueur + ' m · ' : ''}${info}</span></span></label>`;
   }
-  function afficher() {
-    const out = $('#dictResultat');
-    if (!zone.value.trim()) { out.innerHTML = ''; $('#dictOk').disabled = true; $('#dictOk').textContent = 'Enregistrer'; return; }
-    let h = `<div class="form-grid dict-sec">
-      <label class="f">Date du passage<input type="date" id="ddDate" value="${esc(champs.date)}" max="${aujourdhui()}"></label>
-      <label class="f">Équipe / agents<input type="text" id="ddEquipe" value="${esc(champs.equipe)}" autocomplete="off"></label>
-      <label class="f">État constaté<select id="ddEtat">
+  const selEtat = () => `<label class="f">État de l'herbe<select id="ddEtat">
         <option value="" ${!champs.etat ? 'selected' : ''}>Non renseigné</option>
         ${Object.entries(ETATS).map(([k, v]) => `<option value="${k}" ${champs.etat === k ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}
-      </select></label></div>`;
-    h += `<div class="dict-sec"><h4>Rues reconnues (${res.rues.length})</h4>${res.rues.length ? res.rues.map(r => ligne(r, true)).join('') : '<p class="muted small">Aucune pour l\'instant.</p>'}</div>`;
-    if (res.ambigus.length) {
-      h += `<div class="dict-sec"><h4>À préciser (${res.ambigus.length})</h4>${res.ambigus.map(l => `<div class="dict-ambi"><p>Plusieurs voies possibles : coche la bonne</p>${l.map(r => ligne(r, false)).join('')}</div>`).join('')}</div>`;
-    }
-    if (res.nonTrouves.length) {
-      h += `<div class="dict-sec"><h4>Pas compris</h4>${res.nonTrouves.map(t => `<div class="dict-non">« ${esc(t)} »</div>`).join('')}
-        <p class="muted small">Corrige le texte ci-dessus (orthographe du nom de la rue) : la liste se met à jour toute seule.</p></div>`;
+      </select></label>`;
+  function blocRues() {
+    let h = `<div class="dict-sec"><h4>Rues reconnues (${res.rues.length})</h4>${res.rues.length ? res.rues.map(r => ligne(r, true)).join('') : '<p class="muted small">Aucune pour l\'instant.</p>'}</div>`;
+    if (res.zones && res.zones.length) h += `<p class="small">Zone : <strong>${res.zones.map(esc).join(', ')}</strong> <span class="muted">(suivie, sans prédiction)</span></p>`;
+    if (res.ambigus.length) h += `<div class="dict-sec"><h4>À préciser (${res.ambigus.length})</h4>${res.ambigus.map(l => `<div class="dict-ambi"><p>Plusieurs voies possibles : coche la bonne</p>${l.map(r => ligne(r, false)).join('')}</div>`).join('')}</div>`;
+    if (res.nonTrouves.length) h += `<div class="dict-sec"><h4>Pas compris</h4>${res.nonTrouves.map(t => `<div class="dict-non">« ${esc(t)} »</div>`).join('')}
+        <p class="muted small">Corrige le texte ci-dessus (orthographe du nom de la rue ou du prénom) : la liste se met à jour toute seule.</p></div>`;
+    return h;
+  }
+  function afficher() {
+    const out = $('#dictResultat');
+    const ok = $('#dictOk');
+    if (!zone.value.trim() && champs.mode !== 'planifier') { out.innerHTML = ''; ok.disabled = true; ok.textContent = 'Enregistrer'; return; }
+    let h = `<div class="seg dict-sec">${Object.entries(MODES).map(([k, t]) => `<button class="btn${champs.mode === k ? ' primary' : ''}" data-mode="${k}" type="button">${t}</button>`).join('')}</div>`;
+    let n = 0, libelle = 'Enregistrer';
+    if (champs.mode === 'passage') {
+      h += `<div class="form-grid">
+        <label class="f">Date du passage<input type="date" id="ddDate" value="${esc(champs.date)}" max="${aujourdhui()}"></label>
+        <label class="f">Équipe / agents<input type="text" id="ddEquipe" value="${esc(champs.equipe)}" autocomplete="off"></label>
+        ${selEtat()}</div>` + blocRues();
+      n = idsRetenus().length; libelle = n ? `Enregistrer ${n} passage${n > 1 ? 's' : ''}` : 'Enregistrer';
+    } else if (champs.mode === 'planifier') {
+      h += `<div class="form-grid">
+        <label class="f">Date prévue<input type="date" id="ddDate" value="${esc(champs.date)}" min="${aujourdhui()}"></label>
+        <label class="f">Type<select id="ddType">${TYPES_LISTE.map(t => `<option ${champs.type === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+        <label class="f" style="grid-column:1/-1">Agents (et rôle)<input type="text" id="ddAgents" value="${esc(champs.agents)}" placeholder="ex. Michel (rotofil), Pascal (balayeuse)" autocomplete="off"></label>
+        <label class="f">Matériel<input type="text" id="ddMateriel" value="${esc(champs.materiel)}" autocomplete="off"></label>
+        <label class="f">Observations<input type="text" id="ddObs" value="${esc(champs.observations)}" autocomplete="off"></label></div>` + blocRues();
+      n = idsRetenus().length + (res && res.zones ? res.zones.length : 0);
+      libelle = n ? `Ajouter au planning (${fmtJour(champs.date)})` : 'Ajouter au planning';
+    } else {
+      const statuts = { realise: 'Fait', reporte: 'Reporté', annule: 'Annulé' };
+      h += `<div class="form-grid">
+        <label class="f">Résultat<select id="ddStatut">${Object.entries(statuts).map(([k, t]) => `<option value="${k}" ${champs.statut === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+        ${champs.statut === 'annule' ? '' : `<label class="f">${champs.statut === 'reporte' ? 'Nouvelle date' : 'Date de réalisation'}<input type="date" id="ddDate" value="${esc(champs.date)}" ${champs.statut === 'reporte' ? `min="${aujourdhui()}"` : `max="${aujourdhui()}"`}></label>`}
+        ${champs.statut === 'realise' ? selEtat() : ''}</div>`;
+      if (!cands.length) h += `<div class="notice">Aucune intervention prévue ne correspond à ce que tu as dit. Dis le nom de la rue ou le type (« rotofil rue Baque, c'est fait »), ou passe en <strong>Passage fait</strong>.</div>`;
+      else h += `<div class="dict-sec"><h4>Interventions prévues correspondantes</h4>${cands.map(c => {
+        const p = c.p, coche2 = choixPlan.has(p.id) ? choixPlan.get(p.id) : c.score === cands[0].score;
+        return `<label class="dict-item"><input type="checkbox" data-dp="${p.id}" ${coche2 ? 'checked' : ''}><span class="grow"><strong>${esc(Planning.lieuTexte(p))}</strong>
+          <br><span class="muted small">${fmtJour(p.date)} · ${esc(p.type)}${p.agents ? ' · ' + esc(p.agents) : ''}</span></span></label>`;
+      }).join('')}</div>`;
+      n = plansRetenus().length;
+      libelle = n ? `${{ realise: 'Valider', reporte: 'Reporter', annule: 'Annuler' }[champs.statut]} ${n} intervention${n > 1 ? 's' : ''}` : 'Valider';
     }
     out.innerHTML = h;
-    const n = idsRetenus().length;
-    $('#dictOk').disabled = n === 0;
-    $('#dictOk').textContent = n ? `Enregistrer ${n} passage${n > 1 ? 's' : ''}` : 'Enregistrer';
+    ok.disabled = n === 0; ok.textContent = libelle;
   }
 
-  $('#fabDictee').addEventListener('click', ouvrir);
+  $('#fabDictee').addEventListener('click', () => ouvrir());
+  window.ouvrirDictee = ouvrir;
   $('#dictClose').addEventListener('click', fermer);
   $('#dictAnnuler').addEventListener('click', fermer);
   dlg.addEventListener('close', arreter);
@@ -365,18 +515,55 @@ if (typeof document !== 'undefined' && document.getElementById('dlgDictee')) (()
   zone.addEventListener('focus', () => { if (veutEcouter) arreter('Dictée en pause pendant que tu corriges le texte.'); });
   let t = null;
   zone.addEventListener('input', () => { clearTimeout(t); t = setTimeout(analyser, 250); });
+  $('#dictResultat').addEventListener('click', e => {
+    const m = e.target.closest('[data-mode]'); if (!m) return;
+    champs.mode = m.dataset.mode; champs.touche.mode = true; champs.touche.date = false; analyser();
+  });
   $('#dictResultat').addEventListener('change', e => {
     const el = e.target;
     if (el.dataset.dr) { choix.set(el.dataset.dr, el.checked); afficher(); return; }
-    if (el.id === 'ddDate') { champs.date = el.value; champs.touche.date = true; }
+    if (el.dataset.dp) { choixPlan.set(el.dataset.dp, el.checked); afficher(); return; }
+    if (el.id === 'ddDate') { champs.date = el.value; champs.touche.date = true; afficher(); }
     if (el.id === 'ddEtat') { champs.etat = el.value; champs.touche.etat = true; }
+    if (el.id === 'ddType') { champs.type = el.value; champs.touche.type = true; }
+    if (el.id === 'ddStatut') { champs.statut = el.value; champs.touche.statut = true; champs.touche.date = false; analyser(); }
   });
-  $('#dictResultat').addEventListener('input', e => { if (e.target.id === 'ddEquipe') { champs.equipe = e.target.value; champs.touche.equipe = true; } });
+  $('#dictResultat').addEventListener('input', e => {
+    const id = e.target.id, v = e.target.value;
+    if (id === 'ddEquipe') { champs.equipe = v; champs.touche.equipe = true; }
+    if (id === 'ddAgents') { champs.agents = v; champs.touche.agents = true; }
+    if (id === 'ddMateriel') { champs.materiel = v; champs.touche.materiel = true; }
+    if (id === 'ddObs') { champs.observations = v; champs.touche.observations = true; }
+  });
 
   $('#dictOk').addEventListener('click', () => {
+    const date = champs.date, today = aujourdhui();
+    const dateOk = /^\d{4}-\d{2}-\d{2}$/.test(date || '');
+    if (champs.mode === 'planifier') {
+      const ids = idsRetenus(), zones = res?.zones || [];
+      if (!ids.length && !zones.length) return;
+      if (!dateOk || date < today) { toast('Date prévue invalide (aujourd\'hui ou plus tard).'); return; }
+      Planning.ajouter({ date, type: champs.type || 'Autre', rueIds: ids, zones, agents: champs.agents.trim(), materiel: champs.materiel.trim(), intervention: '', observations: champs.observations.trim() });
+      fermer(); toast(`Ajouté au planning : ${fmtJour(date)}.`); return;
+    }
+    if (champs.mode === 'valider') {
+      const plans = plansRetenus(); if (!plans.length) return;
+      if (champs.statut === 'realise') {
+        if (!dateOk || date > today) { toast('Date de réalisation invalide (pas de date future).'); return; }
+        plans.forEach(p => Planning.valider(p.id, champs.etat, date));
+        toast(`${plans.length} intervention${plans.length > 1 ? 's' : ''} validée${plans.length > 1 ? 's' : ''}.`);
+      } else if (champs.statut === 'reporte') {
+        if (!dateOk || date < today) { toast('Nouvelle date invalide.'); return; }
+        plans.forEach(p => Planning.reporter(p.id, date));
+        toast(`Reporté au ${fmtJour(date)}.`);
+      } else {
+        plans.forEach(p => Planning.annuler(p.id));
+        toast('Annulé.');
+      }
+      fermer(); return;
+    }
     const ids = idsRetenus(); if (!ids.length) return;
-    const date = champs.date;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '') || date > aujourdhui()) { toast('Date invalide (pas de date future).'); return; }
+    if (!dateOk || date > today) { toast('Date invalide (pas de date future).'); return; }
     const creeLe = Date.now();
     ids.forEach(rueId => state.passages.push({ id: uid(), rueId, date, etat: champs.etat || '', equipe: (champs.equipe || '').trim(), remarque: '', auteur: state.auteur || '', creeLe, source: 'dictee' }));
     if (champs.equipe) state.equipe = champs.equipe.trim();

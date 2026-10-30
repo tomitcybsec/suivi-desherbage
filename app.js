@@ -3,7 +3,7 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.6';
+const VERSION = '1.7';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
 const WX_MAX_AGE_MS = 3 * 3600 * 1000; // on actualise la météo toutes les 3 h au plus
@@ -195,7 +195,17 @@ function unitesJour(d) {
 // cumul du lendemain de "de" jusqu'à "a" inclus
 function cumul(de, a) { let s = 0; for (let d = addJours(de, 1); d <= a; d = addJours(d, 1)) s += unitesJour(d); return s; }
 
-function passagesDe(rueId) { return state.passages.filter(p => p.rueId === rueId).sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : (a.creeLe || 0) - (b.creeLe || 0)); }
+function passagesDe(rueId) {
+  const l = state.passages.filter(p => p.rueId === rueId).sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : (a.creeLe || 0) - (b.creeLe || 0));
+  // un même jour saisi deux fois (dictée + tableau + planning) ne compte qu'une fois ; on garde l'état constaté s'il existe
+  const out = [];
+  for (const p of l) {
+    const prev = out[out.length - 1];
+    if (prev && prev.date === p.date) { if (!prev.etat && p.etat) out[out.length - 1] = { ...prev, etat: p.etat }; continue; }
+    out.push(p);
+  }
+  return out;
+}
 function seuilClasse(classe) { const R = state.reglages; return R.seuilBase * (R.facteursClasse[classe] ?? 1); }
 
 // apprentissage : chaque état constaté corrige le seuil propre à la rue
@@ -316,6 +326,7 @@ function rendrePriorites() {
   html += `<div class="resume">${['retard', 'semaine', 'quinzaine'].map(k => `<button class="${k}" data-goto="${k}"><b>${groupes[k].length}</b><span>${k === 'retard' ? 'en retard' : k === 'semaine' ? 'cette semaine' : 'sous 15 jours'}</span></button>`).join('')}</div>`;
   html += `<p class="resume-2">${groupes.ok.length} à jour${groupes.inconnu.length ? ` · <button data-goto="inconnu">${groupes.inconnu.length} jamais saisie${groupes.inconnu.length > 1 ? 's' : ''}</button>` : ''}</p>`;
   html += `<p class="meteo-ligne">Météo 7 jours : ${virgule(tm / 7)} °C · ${virgule(pluie)} mm · pousse ${pousse}${nObs < 7 ? ` <span>(${7 - nObs} j estimé${7 - nObs > 1 ? 's' : ''} sur moyennes)</span>` : ''}</p>`;
+  if (typeof blocPlanning === 'function') html += blocPlanning();
 
   for (const k of ['retard', 'semaine', 'quinzaine', 'ok']) {
     if (!groupes[k].length) continue;
@@ -402,6 +413,13 @@ function rendreReglages() {
       Le fichier est lu <strong>sur cet appareil uniquement</strong>, il n'est envoyé nulle part. Réimporte-le à chaque mise à jour : pas de doublons.</p>
       ${state.importTableau ? `<p class="small">Dernier import : « ${esc(state.importTableau.fichier)} », le ${new Date(state.importTableau.le).toLocaleString('fr-FR')} — ${state.importTableau.lignes} lignes, ${state.importTableau.passages} passages rotofil.</p>` : ''}
       <button class="btn primary" data-act="importTableau">${state.importTableau ? 'Réimporter le tableau' : 'Importer mon tableau de suivi'}</button>
+    </div>
+
+    <h2>Agents (pour la dictée)</h2>
+    <div class="card">
+      <p class="small" style="margin-top:0">L'appli reconnaît les prénoms dictés grâce à cette liste. Elle se remplit toute seule avec la colonne « Agents » de ton tableau importé ; ajoute ici les autres (un par ligne, prénom puis nom). Elle reste <strong>sur cet appareil</strong>.</p>
+      <p class="small muted">Déjà connus : ${typeof Planning !== 'undefined' ? (Planning.annuaire().map(a => esc(a.complet)).join(', ') || 'aucun') : '—'}</p>
+      <label class="f">Agents ajoutés à la main<textarea id="rAgents" rows="3" placeholder="ex. Pascal Martin">${esc(state.agentsManuels || '')}</textarea></label>
     </div>
 
     <h2>Sauvegarde des données</h2>
@@ -622,7 +640,7 @@ view.addEventListener('click', e => {
     if (a === 'wipe') {
       if (!confirm('Effacer TOUS les passages de cet appareil ? Pense à télécharger une sauvegarde avant.')) return;
       if (!confirm('Dernière confirmation : effacer définitivement ?')) return;
-      state.passages = []; state.interventions = []; state.importTableau = null; persist(); invalider(); rendre();
+      state.passages = []; state.interventions = []; state.importTableau = null; state.planning = []; persist(); invalider(); rendre();
     }
     return;
   }
@@ -639,6 +657,7 @@ view.addEventListener('input', e => {
     const n = $('#' + t.id); n.focus(); n.setSelectionRange(pos, pos);
   }
   if (t.id === 'rAuteur') { state.auteur = t.value.trim(); persist(); }
+  if (t.id === 'rAgents') { state.agentsManuels = t.value; persist(); }
 });
 view.addEventListener('change', e => {
   if (e.target.id === 'fClasse') { ui.classe = e.target.value; rendre(); }
