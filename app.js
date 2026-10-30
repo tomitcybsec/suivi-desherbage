@@ -3,7 +3,7 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.8';
+const VERSION = '1.9.1';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
 const WX_MAX_AGE_MS = 3 * 3600 * 1000; // on actualise la météo toutes les 3 h au plus
@@ -330,6 +330,7 @@ function rendrePriorites() {
   html += `<p class="resume-2">${groupes.ok.length} à jour${groupes.inconnu.length ? ` · <button data-goto="inconnu">${groupes.inconnu.length} jamais saisie${groupes.inconnu.length > 1 ? 's' : ''}</button>` : ''}</p>`;
   html += `<p class="meteo-ligne">Météo 7 jours : ${virgule(tm / 7)} °C · ${virgule(pluie)} mm · pousse ${pousse}${nObs < 7 ? ` <span>(${7 - nObs} j estimé${7 - nObs > 1 ? 's' : ''} sur moyennes)</span>` : ''}</p>`;
   if (typeof blocPlanning === 'function') html += blocPlanning();
+  if (typeof blocFeuilles === 'function') html += blocFeuilles();
 
   for (const k of ['retard', 'semaine', 'quinzaine', 'ok']) {
     if (!groupes[k].length) continue;
@@ -466,6 +467,16 @@ function rendreReglages() {
       <div class="actions"><button class="btn primary" data-act="saveR">Enregistrer les réglages</button><button class="btn" data-act="resetR">Valeurs par défaut</button></div>
     </div>
 
+    <h2>Feuilles mortes</h2>
+    <div class="card">
+      <p class="small" style="margin-top:0">Rues avec arbres suivies : ${typeof Feuilles !== 'undefined' ? Feuilles.rues().map(id => esc(nomRue(rueParId(id)))).join(', ') || 'aucune' : '—'}.
+      Pour en ajouter ou en retirer : ouvre la fiche de la rue et coche « Rue avec arbres ».</p>
+      <p class="small">Chaque jour, l'appli estime la chute des feuilles (saison, avec un pic vers mi-novembre, renforcée après une gelée et par vent fort) et l'additionne depuis le dernier ramassage
+      (coordonné, pompage, souffleur, balayage manuel). Au-delà du seuil, la rue passe « à ramasser ».</p>
+      <div class="settings-grid"><label class="f">Seuil de ramassage<input type="number" min="50" step="10" id="rSeuilF" value="${state.feuilles ? state.feuilles.seuil : 550}"></label></div>
+      <p class="muted small">Plus petit = on repasse plus souvent. Enregistre avec le bouton « Enregistrer les réglages » ci-dessus.</p>
+    </div>
+
     <h2>Comment la prédiction est calculée</h2>
     <div class="card small">
       <p style="margin-top:0">Chaque jour, l'herbe « pousse » d'un certain nombre d'<strong>unités</strong> : les degrés au-dessus de ${R.tBase} °C,
@@ -516,6 +527,7 @@ function ouvrirRue(id) {
       <div class="muted small">${[p.etat ? ETATS[p.etat]?.label : null, p.equipe, p.auteur ? 'saisi par ' + p.auteur : null].filter(Boolean).map(esc).join(' · ')}</div>
       ${p.remarque ? `<div class="small">${esc(p.remarque)}</div>` : ''}</div>
       ${p.source === 'tableau' ? `<span class="muted small" title="À corriger dans le tableau Excel">tableau n°${esc(p.ref ?? '?')}</span>` : `<button class="btn danger" data-del="${p.id}">Suppr.</button>`}</div>`).join('')}</div>` : '<p class="muted small">Aucun passage.</p>';
+  if (typeof blocFeuillesRue === 'function') html += blocFeuillesRue(id);
   const its = typeof interventionsDeRue === 'function' ? interventionsDeRue(id) : [];
   if (its.length) {
     html += `<h3 style="font-size:15px;margin:14px 0 6px">Interventions du tableau (${its.length})</h3><div class="hist-box">${its.map(l => `<div class="hist-item"><div class="grow">
@@ -634,6 +646,7 @@ view.addEventListener('click', e => {
       R.tBase = num('#rTbase', R.tBase);
       R.pluieRef = Math.max(1, num('#rPluie', R.pluieRef));
       document.querySelectorAll('[data-fc]').forEach(i => { const v = parseFloat(i.value); if (Number.isFinite(v) && v > 0) R.facteursClasse[i.dataset.fc] = v; });
+      const sf = parseFloat($('#rSeuilF')?.value); if (state.feuilles && Number.isFinite(sf) && sf >= 50) state.feuilles.seuil = sf;
       persist(); invalider(); rendre(); toast('Réglages enregistrés.');
     }
     if (a === 'resetR') {
@@ -674,7 +687,7 @@ $('#selGo').addEventListener('click', () => { if (ui.selection.size) (typeof ouv
 $('#drClose').addEventListener('click', fermerRue);
 $('#drClose2').addEventListener('click', fermerRue);
 $('#dlgRue').addEventListener('close', () => { rueOuverte = null; });
-$('#drPassage').addEventListener('click', () => { if (!rueOuverte) return; const id = rueOuverte; if (typeof ouvrirSaisie === 'function') { $('#dlgRue').close(); ouvrirSaisie({ rueIds: [id], mode: 'fait', inter: ['rotofil'] }); } else ouvrirPassage([id]); });
+$('#drPassage').addEventListener('click', () => { if (!rueOuverte) return; const id = rueOuverte; if (typeof ouvrirSaisie === 'function') { $('#dlgRue').close(); ouvrirSaisie({ rueIds: [id], mode: 'fait', inter: typeof Feuilles !== 'undefined' && Feuilles.estRue(id) ? [] : ['rotofil'] }); } else ouvrirPassage([id]); });
 $('#drBody').addEventListener('click', e => { const d = e.target.closest('[data-del]'); if (d) supprimerPassage(d.dataset.del); });
 
 const selSecteur = $('#secteur');
