@@ -181,7 +181,7 @@ if (typeof document !== 'undefined' && document.getElementById('dlgDictee')) (()
   const $ = s => document.querySelector(s);
   const dlg = $('#dlgDictee'), zone = $('#dictTexte'), btn = $('#micBtn');
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let rec = null, ecoute = false, base = '';
+  let rec = null;
   let res = null;
   const choix = new Map();            // id rue -> coché ou non (choix manuels)
   const champs = { date: null, equipe: null, etat: null, touche: {} };
@@ -196,12 +196,12 @@ if (typeof document !== 'undefined' && document.getElementById('dlgDictee')) (()
   document.querySelector('nav.tabs').addEventListener('click', () => setTimeout(majFab));
 
   function ouvrir() {
-    zone.value = ''; base = ''; res = null; choix.clear();
+    zone.value = ''; res = null; choix.clear(); direct(''); etat('');
     champs.date = null; champs.equipe = null; champs.etat = null; champs.touche = {};
     $('#micAide').textContent = SR
-      ? 'Appuie sur « Parler », dicte la date, l\'équipe, les rues et l\'état constaté, puis vérifie la liste avant d\'enregistrer.'
+      ? 'Appuie sur « Parler » et dicte : date, équipe, rues, état de l\'herbe. Fais des pauses, le micro reste ouvert jusqu\'à « Stop ». Vérifie la liste avant d\'enregistrer.'
       : 'Ce navigateur ne fait pas la dictée (c\'est le cas de Firefox). Utilise le micro du clavier de ton téléphone dans la zone ci-dessous, ou ouvre l\'appli dans Chrome ou Edge. Tu peux aussi taper les rues.';
-    btn.hidden = !SR;
+    btn.hidden = !SR; $('#micUndo').hidden = !SR;
     $('#micEtat').textContent = '';
     analyser();
     dlg.showModal();
@@ -209,26 +209,106 @@ if (typeof document !== 'undefined' && document.getElementById('dlgDictee')) (()
   }
   function fermer() { arreter(); dlg.close(); }
 
-  function demarrer() {
-    if (!SR || ecoute) return;
+  /* ---------- Reconnaissance vocale « robuste » ----------
+     Problèmes connus des navigateurs (surtout Chrome sur Android) :
+     - le micro se coupe tout seul au moindre silence ou quand il ne comprend pas ;
+     - en mode continu, la même phrase revient plusieurs fois (phrases cumulées).
+     Corrections : redémarrage automatique tant qu'on n'a pas appuyé sur « Stop »,
+     suppression des répétitions, texte provisoire affiché à part, arrêt après un long silence. */
+  const SILENCE_MAX = 30000;
+  let veutEcouter = false, dernierSon = 0, dernierCommis = '', nbSegments = 0, veille = null;
+  const nz = s => Dictee.norm(s);
+  const etat = t => { $('#micEtat').textContent = t; };
+  const direct = t => { const d = $('#micDirect'); d.textContent = t ? '… ' + t : ''; };
+  const mots = s => s.trim().split(/\s+/).filter(Boolean);
+
+  // supprime les répétitions et ne garde que la version la plus complète d'une phrase cumulée
+  function fusionner(phrases, depart = '') {
+    const out = [], nd = nz(depart);
+    for (const brut of phrases) {
+      let f = brut.trim(); if (!f) continue;
+      const prev = out.length ? out[out.length - 1] : dernierCommis;
+      const nf = nz(f), np = nz(prev);
+      if (!out.length && nd && nd.endsWith(nf)) continue; // déjà à la fin du texte (répétition après redémarrage)
+      if (np) {
+        if (nf === np || np.endsWith(nf)) continue;
+        if (nf.startsWith(np)) {
+          if (out.length) { out[out.length - 1] = f; continue; }
+          f = mots(f).slice(mots(prev).length).join(' ');
+          if (!f) continue;
+        }
+      }
+      out.push(f);
+    }
+    return out;
+  }
+  const joindre = (debut, segs) => [debut.trim().replace(/[,\s]+$/, ''), ...segs].filter(Boolean).join(', ');
+
+  function majBouton() {
+    btn.classList.toggle('ecoute', veutEcouter);
+    $('#micLabel').textContent = veutEcouter ? 'Stop' : 'Parler';
+  }
+
+  function session() {
     rec = new SR();
-    rec.lang = 'fr-FR'; rec.continuous = true; rec.interimResults = true;
-    base = zone.value ? zone.value.replace(/\s*$/, ', ') : '';
+    rec.lang = 'fr-FR'; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
+    const depart = zone.value;
+    let segs = [];
     rec.onresult = e => {
-      let t = '';
-      for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript + (e.results[i].isFinal ? ', ' : ' ');
-      zone.value = (base + t).replace(/,\s*$/, '');
+      dernierSon = Date.now();
+      const finals = [], provisoire = [];
+      for (let i = 0; i < e.results.length; i++) (e.results[i].isFinal ? finals : provisoire).push(e.results[i][0].transcript);
+      const avant = segs.length;
+      segs = fusionner(finals, depart);
+      zone.value = joindre(depart, segs);
+      direct(provisoire.join(' '));
+      if (segs.length > avant && navigator.vibrate) navigator.vibrate(25);
       analyser();
     };
     rec.onerror = e => {
-      const msg = { 'not-allowed': 'Micro refusé : autorise le micro pour ce site.', 'no-speech': 'Je n\'ai rien entendu.', 'network': 'Dictée indisponible sans réseau.', 'audio-capture': 'Aucun micro détecté.' };
-      $('#micEtat').textContent = msg[e.error] || ('Erreur : ' + e.error);
+      if (['not-allowed', 'service-not-allowed'].includes(e.error)) { veutEcouter = false; etat('Micro refusé : autorise le micro pour ce site (icône à gauche de l\'adresse).'); }
+      else if (e.error === 'audio-capture') { veutEcouter = false; etat('Aucun micro détecté.'); }
+      else if (e.error === 'network') { veutEcouter = false; etat('Dictée indisponible sans réseau. Tu peux taper le texte.'); }
+      // « no-speech » et « aborted » : on ignore, le micro redémarre tout seul
     };
-    rec.onend = () => { ecoute = false; btn.classList.remove('ecoute'); $('#micLabel').textContent = 'Parler'; if (!$('#micEtat').textContent.startsWith('Micro') && !$('#micEtat').textContent.startsWith('Erreur') && !$('#micEtat').textContent.startsWith('Je')) $('#micEtat').textContent = ''; };
-    try { rec.start(); } catch { return; }
-    ecoute = true; btn.classList.add('ecoute'); $('#micLabel').textContent = 'Stop'; $('#micEtat').textContent = 'J\'écoute…';
+    rec.onend = () => {
+      if (segs.length) dernierCommis = segs[segs.length - 1];
+      direct('');
+      if (veutEcouter && Date.now() - dernierSon < SILENCE_MAX) {
+        setTimeout(() => { if (veutEcouter) { try { session(); } catch { arreter(); } } }, 200);
+      } else {
+        if (veutEcouter) etat('Micro coupé après 30 s de silence. Appuie sur « Parler » pour continuer.');
+        veutEcouter = false; majBouton(); clearInterval(veille);
+      }
+    };
+    rec.start();
   }
-  function arreter() { if (rec && ecoute) { try { rec.stop(); } catch {} } }
+
+  function demarrer() {
+    if (!SR || veutEcouter) return;
+    veutEcouter = true; dernierSon = Date.now(); dernierCommis = '';
+    try { session(); } catch { veutEcouter = false; etat('Impossible de démarrer le micro.'); return; }
+    majBouton();
+    etat('J\'écoute… Fais des pauses entre les rues, je continue jusqu\'à « Stop ».');
+    clearInterval(veille);
+    veille = setInterval(() => { if (veutEcouter && Date.now() - dernierSon > SILENCE_MAX) arreter('Micro coupé après 30 s de silence. Appuie sur « Parler » pour continuer.'); }, 1000);
+  }
+  function arreter(message) {
+    const etaitActif = veutEcouter;
+    veutEcouter = false; clearInterval(veille); majBouton();
+    if (rec) { try { rec.stop(); } catch {} }
+    if (etaitActif) etat(message || '');
+  }
+  // retire la dernière phrase dictée (quand la reconnaissance s'est trompée)
+  function annulerDerniere() {
+    arreter();
+    const parts = zone.value.split(',');
+    parts.pop();
+    zone.value = parts.join(',').trim();
+    dernierCommis = '';
+    direct('');
+    analyser();
+  }
 
   function analyser() {
     const rues = secteur()?.rues || [];
@@ -280,7 +360,9 @@ if (typeof document !== 'undefined' && document.getElementById('dlgDictee')) (()
   $('#dictClose').addEventListener('click', fermer);
   $('#dictAnnuler').addEventListener('click', fermer);
   dlg.addEventListener('close', arreter);
-  btn.addEventListener('click', () => ecoute ? arreter() : demarrer());
+  btn.addEventListener('click', () => veutEcouter ? arreter() : demarrer());
+  $('#micUndo').addEventListener('click', annulerDerniere);
+  zone.addEventListener('focus', () => { if (veutEcouter) arreter('Dictée en pause pendant que tu corriges le texte.'); });
   let t = null;
   zone.addEventListener('input', () => { clearTimeout(t); t = setTimeout(analyser, 250); });
   $('#dictResultat').addEventListener('change', e => {

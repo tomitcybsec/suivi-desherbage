@@ -228,8 +228,10 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/></svg>
         <span id="micLabel">Parler</span>
       </button>
-      <span class="muted small" id="micEtat"></span>
+      <button class="btn" id="micUndo" type="button">Effacer la dernière phrase</button>
     </div>
+    <p class="small" id="micEtat" style="margin:0 0 4px;font-weight:700"></p>
+    <p class="muted small" id="micDirect" style="margin:0 0 6px;min-height:1.2em;font-style:italic"></p>
     <p class="muted small" id="micAide" style="margin:0 0 8px"></p>
     <textarea id="dictTexte" rows="3" placeholder="Ex. : « Aujourd'hui équipe A, rue de Tunis, rue Baque et impasse Barthe, beaucoup d'herbe »"></textarea>
     <div id="dictResultat"></div>
