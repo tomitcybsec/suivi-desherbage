@@ -3,7 +3,7 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.4';
+const VERSION = '1.5';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
 const WX_MAX_AGE_MS = 3 * 3600 * 1000; // on actualise la météo toutes les 3 h au plus
@@ -308,7 +308,7 @@ function rendrePriorites() {
   let html = '';
   if (!state.passages.length) {
     html += `<div class="notice"><strong>Pour démarrer :</strong> appuie sur <strong>Dicter un passage</strong> en bas de l'écran et dicte les rues déjà désherbées
-      avec la date (ex. « le 15 octobre, rue de Tunis, rue Baque »), ou coche-les dans l'onglet <strong>Rues</strong>. L'appli calculera ensuite toute seule quand y retourner.</div>`;
+      avec la date (ex. « le 15 octobre, rue de Tunis, rue Baque »), coche-les dans l'onglet <strong>Rues</strong>, ou importe ton tableau Excel depuis l'onglet <strong>Suivi</strong>. L'appli calculera ensuite toute seule quand y retourner.</div>`;
   }
   if (meteo.erreur) {
     html += `<div class="notice warn">La météo n'a pas pu être récupérée (${esc(meteo.erreur)}). Les calculs utilisent ${nObs ? 'les dernières données connues et ' : ''}des moyennes saisonnières. <button class="btn" data-act="meteo">Réessayer</button></div>`;
@@ -383,7 +383,7 @@ function rendreHistorique() {
       return `<div class="hist-item"><div class="grow"><strong>${esc(nomRue(r))}</strong>
         <div class="muted small">${[p.etat ? ETATS[p.etat]?.label : null, p.equipe, p.auteur ? 'saisi par ' + p.auteur : null].filter(Boolean).map(esc).join(' · ')}</div>
         ${p.remarque ? `<div class="small">${esc(p.remarque)}</div>` : ''}</div>
-        <button class="btn danger" data-del="${p.id}" title="Supprimer ce passage">Suppr.</button></div>`;
+        ${p.source === 'tableau' ? `<span class="muted small" title="À corriger dans le tableau Excel">tableau n°${esc(p.ref ?? '?')}</span>` : `<button class="btn danger" data-del="${p.id}" title="Supprimer ce passage">Suppr.</button>`}</div>`;
     }).join('')}</div></div>`;
   }
   view.innerHTML = html;
@@ -395,6 +395,14 @@ function rendreReglages() {
   view.innerHTML = `
     <h2>Utilisateur</h2>
     <div class="card"><label class="f">Ton nom (enregistré avec chaque passage saisi)<input id="rAuteur" value="${esc(state.auteur)}" placeholder="ex. Thomas"></label></div>
+
+    <h2>Tableau de suivi (Excel)</h2>
+    <div class="card">
+      <p class="small" style="margin-top:0">Importe ton tableau Excel : l'appli reconnaît les rues, compte les passages de rotofil réalisés pour la prédiction et calcule le récap par rue.
+      Le fichier est lu <strong>sur cet appareil uniquement</strong>, il n'est envoyé nulle part. Réimporte-le à chaque mise à jour : pas de doublons.</p>
+      ${state.importTableau ? `<p class="small">Dernier import : « ${esc(state.importTableau.fichier)} », le ${new Date(state.importTableau.le).toLocaleString('fr-FR')} — ${state.importTableau.lignes} lignes, ${state.importTableau.passages} passages rotofil.</p>` : ''}
+      <button class="btn primary" data-act="importTableau">${state.importTableau ? 'Réimporter le tableau' : 'Importer mon tableau de suivi'}</button>
+    </div>
 
     <h2>Sauvegarde des données</h2>
     <div class="card">
@@ -455,7 +463,7 @@ function rendreReglages() {
 function rendre() {
   majPill();
   document.querySelectorAll('nav.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === onglet)));
-  ({ priorites: rendrePriorites, rues: rendreRues, historique: rendreHistorique, reglages: rendreReglages })[onglet]();
+  ({ priorites: rendrePriorites, rues: rendreRues, historique: () => (typeof rendreSuivi === 'function' ? rendreSuivi() : rendreHistorique()), reglages: rendreReglages })[onglet]();
   if (onglet !== 'rues') $('#selbar').hidden = true;
 }
 
@@ -482,11 +490,18 @@ function ouvrirRue(id) {
     </dl>`;
   }
   const ps = passagesDe(id).slice().reverse();
-  html += `<h3 style="font-size:15px;margin:14px 0 6px">Historique (${ps.length})</h3>`;
+  html += `<h3 style="font-size:15px;margin:14px 0 6px">Passages herbe (${ps.length})</h3>`;
   html += ps.length ? `<div class="hist-box">${ps.map(p => `<div class="hist-item"><div class="grow"><strong>${fmtDate(p.date)}</strong>
       <div class="muted small">${[p.etat ? ETATS[p.etat]?.label : null, p.equipe, p.auteur ? 'saisi par ' + p.auteur : null].filter(Boolean).map(esc).join(' · ')}</div>
       ${p.remarque ? `<div class="small">${esc(p.remarque)}</div>` : ''}</div>
-      <button class="btn danger" data-del="${p.id}">Suppr.</button></div>`).join('')}</div>` : '<p class="muted small">Aucun passage.</p>';
+      ${p.source === 'tableau' ? `<span class="muted small" title="À corriger dans le tableau Excel">tableau n°${esc(p.ref ?? '?')}</span>` : `<button class="btn danger" data-del="${p.id}">Suppr.</button>`}</div>`).join('')}</div>` : '<p class="muted small">Aucun passage.</p>';
+  const its = typeof interventionsDeRue === 'function' ? interventionsDeRue(id) : [];
+  if (its.length) {
+    html += `<h3 style="font-size:15px;margin:14px 0 6px">Interventions du tableau (${its.length})</h3><div class="hist-box">${its.map(l => `<div class="hist-item"><div class="grow">
+      <strong>${fmtDate(l.date)}</strong> <span class="muted small">· ${esc(l.type || 'Autre')}${l.statut !== 'realise' ? ' · ' + esc(l.statutTexte || l.statut) : ''}</span>
+      <div class="small">${[l.intervention, l.materiel, l.poches ? l.poches + ' poches' : null].filter(Boolean).map(esc).join(' · ')}</div>
+      ${l.agents ? `<div class="muted small">${esc(l.agents)}</div>` : ''}</div></div>`).join('')}</div>`;
+  }
   $('#drBody').innerHTML = html;
   const dlg = $('#dlgRue');
   if (!dlg.open) dlg.showModal();
@@ -607,7 +622,7 @@ view.addEventListener('click', e => {
     if (a === 'wipe') {
       if (!confirm('Effacer TOUS les passages de cet appareil ? Pense à télécharger une sauvegarde avant.')) return;
       if (!confirm('Dernière confirmation : effacer définitivement ?')) return;
-      state.passages = []; persist(); invalider(); rendre();
+      state.passages = []; state.interventions = []; state.importTableau = null; persist(); invalider(); rendre();
     }
     return;
   }
