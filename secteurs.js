@@ -1,6 +1,8 @@
 /* Référentiel des secteurs.
    Pour ajouter un secteur : copier le bloc du secteur 3, changer id / nom / lat / lon, et remplacer la liste des rues.
-   Les id de rues ne doivent jamais changer une fois des passages saisis. */
+   Les id de rues ne doivent jamais changer une fois des passages saisis.
+   alias : noms d'usage qui désignent une voie du référentiel (ex. « les Mazades »).
+   zones : lieux sans voie dans le référentiel (quartier, parking) : suivis mais sans prédiction. */
 window.SECTEURS = [
  {
   "id": "pn-s3",
@@ -9,6 +11,13 @@ window.SECTEURS = [
   "commune": "Toulouse",
   "lat": 43.625,
   "lon": 1.437,
+  "alias": [
+   { "motifs": ["quartier des mazades", "les mazades", "secteur des mazades"], "voie": "Avenue des Mazades" }
+  ],
+  "zones": [
+   { "nom": "La Vache", "motifs": ["vache"] },
+   { "nom": "Parking de la Glanerie", "motifs": ["glanerie"] }
+  ],
   "rues": [
    {
     "id": "s3-001",
