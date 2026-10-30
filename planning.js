@@ -51,7 +51,7 @@ const Planning = (() => {
 
   function ajouter(d) {
     const it = { id: uid(), creeLe: Date.now(), modifieLe: Date.now(), copieLe: 0, statut: 'prevu', etat: '', observations: '', ...d };
-    state.planning.push(it); enregistrer(); return it;
+    state.planning.push(it); majPassages(it); enregistrer(); return it;
   }
   function changer(id, modif) {
     const it = state.planning.find(p => p.id === id); if (!it) return;
@@ -165,6 +165,7 @@ const Planning = (() => {
         <div class="nom" style="white-space:normal">${esc(Planning.lieuTexte(it))}</div>
         ${it.agents ? `<div class="meta">${esc(it.agents)}</div>` : ''}
         ${it.observations ? `<div class="meta">${esc(it.observations)}</div>` : ''}
+        ${it.statut === 'prevu' ? (al => al ? `<div class="pluie ${al.niveau}">${esc(al.titre)} ${esc(al.detail)}</div>` : '')(alerteMeteo(it.date)) : ''}
         ${actions && it.statut === 'prevu' ? `<div class="actions" style="margin-top:8px">
           <button class="btn primary" data-pl="fait" data-id="${it.id}">Fait</button>
           <button class="btn" data-pl="reporter" data-id="${it.id}">Reporter</button>
@@ -174,13 +175,46 @@ const Planning = (() => {
       <div class="right">${etiquette}</div></div>`;
   }
 
+  /* ---------- Alertes météo (pluie, vent) ----------
+     Pluie probable : ≥ 2 mm ou probabilité ≥ 60 %. Forte pluie : ≥ 10 mm. Vent fort : rafales moyennes ≥ 50 km/h.
+     Seulement pour les jours couverts par la prévision (16 jours) ; plus fiable à 2–3 jours. */
+  const SEUILS = { pluie: 2, proba: 60, forte: 10, vent: 50 };
+  window.alerteMeteo = function (date) {
+    const today = aujourdhui();
+    if (!date || date < today) return null;
+    const j = meteo.jours[date];
+    if (!j || (date > today && !j.prev)) return null;
+    const pl = j.pluie || 0, pr = j.proba, v = j.vent;
+    const pluie = pl >= SEUILS.pluie || (pr != null && pr >= SEUILS.proba);
+    const vent = v != null && v >= SEUILS.vent;
+    if (!pluie && !vent) return null;
+    const dans = ecartJours(today, date);
+    const fiab = dans <= 3 ? '' : ' (prévision lointaine, à reconfirmer)';
+    const morceaux = [];
+    if (pluie) morceaux.push(`${virgule(pl)} mm${pr != null ? `, ${pr} % de risque` : ''}${j.heuresPluie ? `, ${Math.round(j.heuresPluie)} h de pluie` : ''}`);
+    if (vent) morceaux.push(`vent jusqu'à ${Math.round(v)} km/h`);
+    const fort = pl >= SEUILS.forte || (pr != null && pr >= 80 && pl >= 5) || vent;
+    return { niveau: fort ? 'fort' : 'moyen', titre: pluie ? (fort ? 'Forte pluie prévue' : 'Pluie probable') : 'Vent fort prévu', detail: `le ${fmtJour(date)} : ${morceaux.join(' · ')}${fiab}.` };
+  };
+  // bandeau dans Priorités : les 3 prochains jours
+  function alertesPluie() {
+    const today = aujourdhui(), lignes = [];
+    for (let k = 0; k <= 3; k++) {
+      const d = addJours(today, k), al = alerteMeteo(d); if (!al) continue;
+      const prevus = state.planning.filter(p => p.statut === 'prevu' && p.date === d);
+      lignes.push(`<div><strong>${esc(al.titre)}</strong> ${esc(al.detail)}${prevus.length ? `<br><span class="small">⚠ ${prevus.length} intervention${prevus.length > 1 ? 's' : ''} prévue${prevus.length > 1 ? 's' : ''} ce jour-là : ${prevus.map(p => esc((p.intervention || p.type) + ' · ' + Planning.lieuTexte(p))).join(' ; ')} — à reporter ou à remplacer ?</span>` : ''}</div>`);
+    }
+    return lignes.length ? `<div class="notice warn" style="margin-top:12px"><div class="small muted" style="margin-bottom:4px">Alerte météo — 3 prochains jours</div>${lignes.join('<div style="height:6px"></div>')}</div>` : '';
+  }
+
   // bloc en haut de « Priorités » : à valider + 7 prochains jours
   window.blocPlanning = function () {
     const today = aujourdhui(), fin = addJours(today, 7);
     const L = state.planning.filter(p => p.statut === 'prevu' && p.date <= fin).sort((a, b) => a.date.localeCompare(b.date));
     const head = `<h2 style="display:flex;justify-content:space-between;align-items:center;gap:8px">Planning des 7 jours <button class="btn" data-pl="prevoir">+ Prévoir</button></h2>`;
-    if (!L.length) return head + `<p class="muted small" style="margin-top:0">Rien de prévu. Dis par exemple : « Mardi, je prévois rotofil rue de Tunis, Michel au rotofil, Pascal en balayeuse. »</p>`;
-    return head + `<div class="list">${L.map(it => carte(it)).join('')}</div>`;
+    const alertes = alertesPluie();
+    if (!L.length) return alertes + head + `<p class="muted small" style="margin-top:0">Rien de prévu. Touche « + Prévoir » ou coche des rues dans l'onglet Rues.</p>`;
+    return alertes + head + `<div class="list">${L.map(it => carte(it)).join('')}</div>`;
   };
 
   // vue « Planning » de l'onglet Suivi
@@ -195,7 +229,7 @@ const Planning = (() => {
       <button class="btn primary" data-pl="prevoir">+ Prévoir une intervention</button>
       <button class="btn" data-pl="copier" ${n ? '' : 'disabled'}>Copier pour mon tableau${n ? ` (${n})` : ''}</button></div>
       <p class="muted small" style="margin:-4px 0 12px">« Copier pour mon tableau » copie les lignes nouvelles ou modifiées, dans l'ordre de tes colonnes : colle-les dans Excel sur la première case vide de la colonne N°.</p>`;
-    if (!P.length) h += `<div class="notice">Aucune intervention prévue. Appuie sur <strong>Dicter un passage</strong> et dis par exemple : « Mardi 3 novembre, je prévois rotofil sur François Collignon, Michel au rotofil, Laurent au souffleur, Pascal en balayeuse. »</div>`;
+    if (!P.length) h += `<div class="notice">Aucune intervention enregistrée. Appuie sur <strong>+ Prévoir une intervention</strong>, ou coche des rues dans l'onglet <strong>Rues</strong>.</div>`;
     if (avalider.length) h += `<h2>À valider (${avalider.length})</h2><div class="list">${avalider.map(it => carte(it)).join('')}</div>`;
     if (avenir.length) h += `<h2>À venir (${avenir.length})</h2><div class="list">${avenir.map(it => carte(it)).join('')}</div>`;
     if (faits.length) h += `<h2>Traitées récemment</h2><div class="list">${faits.map(it => carte(it)).join('')}</div>`;
@@ -205,7 +239,7 @@ const Planning = (() => {
   document.getElementById('view').addEventListener('click', e => {
     const b = e.target.closest('[data-pl]'); if (!b) return;
     const id = b.dataset.id, a = b.dataset.pl;
-    if (a === 'prevoir') { if (typeof ouvrirDictee === 'function') ouvrirDictee('planifier'); return; }
+    if (a === 'prevoir') { if (typeof ouvrirSaisie === 'function') ouvrirSaisie({ mode: 'prevu' }); return; }
     if (a === 'copier') { Planning.copier(Planning.aCopier()); return; }
     if (a === 'fait') ouvrirAction('fait', id);
     if (a === 'reporter') ouvrirAction('reporter', id);

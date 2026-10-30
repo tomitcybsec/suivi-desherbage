@@ -98,6 +98,22 @@ h2 .muted{font-weight:400}
 .btn:disabled{opacity:.45;cursor:default}
 .selbar{position:fixed;left:0;right:0;bottom:0;background:var(--bg);border-top:1px solid var(--line);padding:10px 0 calc(10px + env(safe-area-inset-bottom));z-index:15}
 .selbar .wrap{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+/* saisie à cocher */
+.sx{margin:16px 0 6px;font-size:15px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chipbtn{background:var(--surface);border:1px solid var(--line);padding:10px 12px;font-size:15px;cursor:pointer;color:var(--text);min-height:44px}
+.chipbtn.on{background:var(--text);color:var(--bg);border-color:var(--text);font-weight:700}
+.chipbtn.big{flex:1;min-width:30%;padding:14px 8px}
+.chips input[type=date]{background:var(--surface);border:1px solid var(--line);padding:9px 8px;min-height:44px;color:var(--text)}
+#sxQ,#sxObs,#sxNouvel{background:var(--surface);border:1px solid var(--line);padding:11px 12px;font-size:16px;color:var(--text);border-radius:0}
+.sx-sugg{display:flex;flex-direction:column;gap:4px;margin-top:6px}
+.sx-rue{text-align:left;background:var(--surface);border:1px dashed var(--line);padding:10px 12px;cursor:pointer;color:var(--text);min-height:44px}
+.sx-role{display:flex;align-items:center;gap:10px;margin-top:6px}
+.sx-role span{min-width:90px;font-weight:700}
+.sx-role select{flex:1;background:var(--surface);border:1px solid var(--line);padding:9px;color:var(--text)}
+.sx-add{display:flex;gap:6px;margin-top:8px}.sx-add input{flex:1;min-width:0}
+.pluie{margin-top:6px;font-size:13.5px;font-weight:700;padding:4px 8px;border-left:4px solid var(--accent);background:var(--surface2)}
+.pluie.fort{border-left-color:var(--retard);color:var(--retard)}
 /* cartes du planning : boutons sur une ligne */
 .plan .actions{flex-wrap:nowrap;gap:6px}
 .plan .actions .btn{padding:8px 11px;font-size:14px}
@@ -183,7 +199,7 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
   <div class="wrap">
     <strong id="selCount">0 rue</strong>
     <button class="btn" id="selNone">Tout désélectionner</button>
-    <button class="btn primary" id="selGo">Saisir un passage</button>
+    <button class="btn primary" id="selGo">Fait / À prévoir</button>
   </div>
 </div>
 
@@ -215,35 +231,13 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 <dialog id="dlgRue">
   <div class="dlg-head"><h3 id="drTitre">Rue</h3><button class="x" id="drClose" aria-label="Fermer">×</button></div>
   <div class="dlg-body" id="drBody"></div>
-  <div class="dlg-foot"><button class="btn" id="drClose2">Fermer</button><button class="btn primary" id="drPassage">Passage fait</button></div>
+  <div class="dlg-foot"><button class="btn" id="drClose2">Fermer</button><button class="btn primary" id="drPassage">Saisir une intervention</button></div>
 </dialog>
 
-<button id="fabDictee" class="fab" aria-label="Dicter un passage"><span class="in">
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/></svg>
-  Dicter un passage</span>
+<button id="fabSaisir" class="fab" aria-label="Saisir une intervention"><span class="in">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+  Saisir</span>
 </button>
-
-<dialog id="dlgDictee">
-  <div class="dlg-head"><h3>Dicter un passage</h3><button class="x" id="dictClose" aria-label="Fermer">×</button></div>
-  <div class="dlg-body">
-    <div class="mic-row">
-      <button class="btn primary mic" id="micBtn" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/></svg>
-        <span id="micLabel">Parler</span>
-      </button>
-      <button class="btn" id="micUndo" type="button">Effacer la dernière phrase</button>
-    </div>
-    <p class="small" id="micEtat" style="margin:0 0 4px;font-weight:700"></p>
-    <p class="muted small" id="micDirect" style="margin:0 0 6px;min-height:1.2em;font-style:italic"></p>
-    <p class="muted small" id="micAide" style="margin:0 0 8px"></p>
-    <textarea id="dictTexte" rows="3" placeholder="Ex. : « Aujourd'hui équipe A, rue de Tunis, rue Baque et impasse Barthe, beaucoup d'herbe »"></textarea>
-    <div id="dictResultat"></div>
-  </div>
-  <div class="dlg-foot">
-    <button class="btn" id="dictAnnuler" type="button">Annuler</button>
-    <button class="btn primary" id="dictOk" type="button" disabled>Enregistrer</button>
-  </div>
-</dialog>
 
 <input type="file" id="fileImport" accept="application/json,.json" hidden>
 
@@ -252,5 +246,6 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 <script src="dictee.js"></script>
 <script src="tableau.js"></script>
 <script src="planning.js"></script>
+<script src="saisie.js"></script>
 </body>
 </html>

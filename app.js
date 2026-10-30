@@ -3,7 +3,7 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.7';
+const VERSION = '1.8';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
 const WX_MAX_AGE_MS = 3 * 3600 * 1000; // on actualise la météo toutes les 3 h au plus
@@ -82,10 +82,11 @@ const nomRue = r => r ? r.voie + (r.troncon ? ` (${r.troncon})` : '') : 'Rue sup
 
 /* ---------- Météo ---------- */
 const VARS = ['temperature_2m_max', 'temperature_2m_min', 'precipitation_sum', 'relative_humidity_2m_mean'];
+const VARS_PREVI = [...VARS, 'precipitation_probability_max', 'precipitation_hours', 'wind_speed_10m_max'];
 
-async function appelMeteo(base, params) {
-  // essaie avec l'humidité, puis sans si le service refuse cette variable
-  for (const vars of [VARS, VARS.slice(0, 3)]) {
+async function appelMeteo(base, params, essais) {
+  // essaie avec toutes les variables, puis avec moins si le service en refuse une
+  for (const vars of essais || [VARS, VARS.slice(0, 3)]) {
     const url = `${base}?${new URLSearchParams({ ...params, daily: vars.join(','), timezone: 'Europe/Paris' })}`;
     const r = await fetch(url);
     if (r.ok) return r.json();
@@ -103,6 +104,9 @@ function integrer(json, prevision) {
       tmax, tmin,
       pluie: d.precipitation_sum?.[i] ?? 0,
       hum: d.relative_humidity_2m_mean?.[i] ?? null,
+      proba: d.precipitation_probability_max?.[i] ?? null,
+      heuresPluie: d.precipitation_hours?.[i] ?? null,
+      vent: d.wind_speed_10m_max?.[i] ?? null,
       prev: prevision && t > today
     };
   });
@@ -118,7 +122,7 @@ async function majMeteo(force = false) {
     afficherPill('Météo : mise à jour…');
     try {
       const pos = { latitude: s.lat, longitude: s.lon };
-      integrer(await appelMeteo('https://api.open-meteo.com/v1/forecast', { ...pos, past_days: 92, forecast_days: 16 }), true);
+      integrer(await appelMeteo('https://api.open-meteo.com/v1/forecast', { ...pos, past_days: 92, forecast_days: 16 }, [VARS_PREVI, VARS, VARS.slice(0, 3)]), true);
       // complète les jours passés manquants (trous de la prévision ou passages anciens) avec l'archive
       const trous = joursManquants(addJours(aujourdhui(), -92), addJours(aujourdhui(), -2));
       const ancien = besoinArchive();
@@ -317,8 +321,7 @@ function rendrePriorites() {
 
   let html = '';
   if (!state.passages.length) {
-    html += `<div class="notice"><strong>Pour démarrer :</strong> appuie sur <strong>Dicter un passage</strong> en bas de l'écran et dicte les rues déjà désherbées
-      avec la date (ex. « le 15 octobre, rue de Tunis, rue Baque »), coche-les dans l'onglet <strong>Rues</strong>, ou importe ton tableau Excel depuis l'onglet <strong>Suivi</strong>. L'appli calculera ensuite toute seule quand y retourner.</div>`;
+    html += `<div class="notice"><strong>Pour démarrer :</strong> appuie sur <strong>+ Saisir</strong> en bas de l'écran, ou coche des rues dans l'onglet <strong>Rues</strong>, pour indiquer ce qui a été fait ou ce que tu prévois, ou importe ton tableau Excel depuis l'onglet <strong>Suivi</strong>. L'appli calculera ensuite toute seule quand y retourner.</div>`;
   }
   if (meteo.erreur) {
     html += `<div class="notice warn">La météo n'a pas pu être récupérée (${esc(meteo.erreur)}). Les calculs utilisent ${nObs ? 'les dernières données connues et ' : ''}des moyennes saisonnières. <button class="btn" data-act="meteo">Réessayer</button></div>`;
@@ -667,11 +670,11 @@ view.addEventListener('click', e => {
   if (e.target.id === 'selAll') { ruesFiltrees().forEach(r => ui.selection.add(r.id)); rendre(); }
 });
 $('#selNone').addEventListener('click', () => { ui.selection.clear(); rendre(); });
-$('#selGo').addEventListener('click', () => { if (ui.selection.size) ouvrirPassage([...ui.selection]); });
+$('#selGo').addEventListener('click', () => { if (ui.selection.size) (typeof ouvrirSaisie === 'function' ? ouvrirSaisie({ rueIds: [...ui.selection] }) : ouvrirPassage([...ui.selection])); });
 $('#drClose').addEventListener('click', fermerRue);
 $('#drClose2').addEventListener('click', fermerRue);
 $('#dlgRue').addEventListener('close', () => { rueOuverte = null; });
-$('#drPassage').addEventListener('click', () => { if (rueOuverte) ouvrirPassage([rueOuverte]); });
+$('#drPassage').addEventListener('click', () => { if (!rueOuverte) return; const id = rueOuverte; if (typeof ouvrirSaisie === 'function') { $('#dlgRue').close(); ouvrirSaisie({ rueIds: [id], mode: 'fait', inter: ['rotofil'] }); } else ouvrirPassage([id]); });
 $('#drBody').addEventListener('click', e => { const d = e.target.closest('[data-del]'); if (d) supprimerPassage(d.dataset.del); });
 
 const selSecteur = $('#secteur');
