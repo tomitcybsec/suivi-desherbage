@@ -20,7 +20,7 @@
   --retard:#b3261e; --retard-ink:#ffffff;
   --semaine:#1c1c1c; --quinzaine:#1c1c1c; --ok:#55575a; --inconnu:#8a8c8f;
   /* touche Toulouse (violet) — ne remplace PAS --accent, qui reste le jaune de l'action principale */
-  --toulouse:#6b3fa0; --toulouse-clair:#dccfec;
+  --toulouse:#6b3fa0; --toulouse-clair:#dccfec; --mortier:rgba(255,255,255,.32);
 }
 @media (prefers-color-scheme: dark){
   :root{
@@ -29,7 +29,7 @@
     --accent:#f2c200; --accent-ink:#1c1c1c; --focus:#f2c200;
     --retard:#e5534b; --retard-ink:#ffffff;
     --semaine:#ecebe7; --quinzaine:#ecebe7; --ok:#a4a8ad; --inconnu:#7d8186;
-    --toulouse:#c9a7f0; --toulouse-clair:#3a2f4c;
+    --toulouse:#c9a7f0; --toulouse-clair:#3a2f4c; --mortier:rgba(20,10,40,.28);
   }
 }
 *{box-sizing:border-box}
@@ -56,6 +56,10 @@ header.top{background:var(--head);color:var(--head-ink);padding:14px 0 0;positio
 .pill{margin-left:auto;font-size:13px;color:var(--head-muted);cursor:pointer;white-space:nowrap;text-decoration:underline;text-decoration-color:transparent}
 .pill:hover{text-decoration-color:currentColor}
 .pill.warn{color:var(--accent);font-weight:700}
+/* Bande de briques sous l'en-tête (CSS seul) : 2 rangées de briques de 16 × 4 px, joints décalés */
+header.top::after{content:"";display:block;height:8px;background-color:var(--toulouse);
+  background-image:linear-gradient(90deg,var(--mortier) 1px,transparent 1px),linear-gradient(90deg,var(--mortier) 1px,transparent 1px),linear-gradient(0deg,var(--mortier) 1px,transparent 1px);
+  background-size:16px 4px,16px 4px,100% 4px;background-position:0 0,8px 4px,0 0;background-repeat:repeat-x,repeat-x,repeat-y}
 nav.tabs{display:flex;gap:2px;margin-top:12px}
 nav.tabs button{flex:1;background:none;border:0;color:var(--head-muted);padding:11px 4px;cursor:pointer;white-space:nowrap;font-size:15px}
 nav.tabs button[aria-selected="true"]{background:var(--bg);color:var(--text);font-weight:700;border-radius:6px 6px 0 0;box-shadow:inset 0 -4px 0 var(--toulouse)}
