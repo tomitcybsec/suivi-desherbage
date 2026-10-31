@@ -11,6 +11,7 @@
 - Si un fichier est ajouté ou renommé : l'ajouter à `FICHIERS` dans `sw.js` et **changer le nom du cache** (`desherbage-vN`).
 - Pas d'outil de compilation : HTML / CSS / JavaScript simples, servis tels quels par **GitHub Pages (branche `main`, dossier racine)**.
 - Travailler sur une branche, puis lui proposer de fusionner : il valide avant mise en ligne.
+- **Ne jamais ouvrir ni lire `xlsx.full.min.js`** (bibliothèque externe très lourde, on n'y touche pas). Pour chercher dans le code, exclure ce fichier (ex. `grep` sur les autres fichiers seulement).
 
 ## Fichiers
 | Fichier | Rôle |
