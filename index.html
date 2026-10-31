@@ -21,6 +21,7 @@
   --semaine:#1c1c1c; --quinzaine:#1c1c1c; --ok:#55575a; --inconnu:#8a8c8f;
   /* touche Toulouse (violet) — ne remplace PAS --accent, qui reste le jaune de l'action principale */
   --toulouse:#6b3fa0; --toulouse-clair:#dccfec; --mortier:rgba(255,255,255,.32);
+  --c5:#6b3fa0; --c4:#8a63bd; --c3:#b8553a; --c2:#d08a6e; --c1:#dcb5a5; --c0:#e6d4cb;
 }
 @media (prefers-color-scheme: dark){
   :root{
@@ -30,6 +31,7 @@
     --retard:#e5534b; --retard-ink:#ffffff;
     --semaine:#ecebe7; --quinzaine:#ecebe7; --ok:#a4a8ad; --inconnu:#7d8186;
     --toulouse:#c9a7f0; --toulouse-clair:#3a2f4c; --mortier:rgba(20,10,40,.28);
+    --c5:#c9a7f0; --c4:#a98bd6; --c3:#e0866a; --c2:#c98f79; --c1:#a8857a; --c0:#7e6d66;
   }
 }
 *{box-sizing:border-box}
@@ -87,6 +89,19 @@ h2 .muted{font-weight:400}
 .list{display:flex;flex-direction:column;gap:6px}
 .rue{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--line);padding:12px 14px;min-height:64px;cursor:pointer;text-align:left;width:100%}
 .rue:hover{border-color:var(--text)}
+/* liseré de 8 px à gauche selon la classe pôle (ne bouge pas au survol) */
+.rue[data-classe]{padding-left:20px}
+.rue[data-classe="5"]{box-shadow:inset 8px 0 0 var(--c5)}
+.rue[data-classe="4"]{box-shadow:inset 8px 0 0 var(--c4)}
+.rue[data-classe="3"]{box-shadow:inset 8px 0 0 var(--c3)}
+.rue[data-classe="2"]{box-shadow:inset 8px 0 0 var(--c2)}
+.rue[data-classe="1"]{box-shadow:inset 8px 0 0 var(--c1)}
+.rue[data-classe="0"]{box-shadow:inset 8px 0 0 var(--c0)}
+.legende{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin:14px 0 0;font-size:13.5px;color:var(--muted)}
+.legende span{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.legende i{display:inline-block;width:8px;height:18px;border:1px solid var(--line)}
+.legende .sw5{background:var(--c5)}.legende .sw4{background:var(--c4)}.legende .sw3{background:var(--c3)}
+.legende .sw2{background:var(--c2)}.legende .sw1{background:var(--c1)}.legende .sw0{background:var(--c0)}
 .rue .main{flex:1;min-width:0}
 .rue .nom{font-weight:700;font-size:17px;overflow:hidden;text-overflow:ellipsis}
 .rue .meta{font-size:13.5px;color:var(--muted)}
