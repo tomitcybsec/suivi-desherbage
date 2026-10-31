@@ -3,7 +3,7 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.9.3';
+const VERSION = '1.9.7';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
 const WX_MAX_AGE_MS = 3 * 3600 * 1000; // on actualise la météo toutes les 3 h au plus
@@ -301,6 +301,55 @@ function ligneRue(rue, { selection = false } = {}) {
   </div>`;
 }
 
+/* Les 5 rues les plus urgentes aujourd'hui.
+   Points : retard d'herbe (la repousse intègre déjà la météo prévue), classe pôle (+4 par classe),
+   feuilles à ramasser, intervention prévue (aujourd'hui ou en retard +50, dans 2 jours +15).
+   Météo : s'il pleut ou s'il y a du vent fort aujourd'hui, une intervention prévue ce jour perd 30 points (report probable). */
+function rueUrgences() {
+  const today = aujourdhui();
+  const alerte = typeof alerteMeteo === 'function' ? alerteMeteo(today) : null;
+  const prevus = (state.planning || []).filter(p => p.statut === 'prevu' && p.date <= addJours(today, 2));
+  const out = [];
+  (secteur()?.rues || []).forEach(rue => {
+    const s = statutRue(rue), raisons = [];
+    let score = 0;
+    if (s.statut === 'retard') {
+      score += 100 + Math.min(60, Math.max(0, s.pct - 1) * 60);
+      const j = Math.max(0, ecartJours(s.echeance || today, today));
+      raisons.push(j ? `herbe en retard de ${j} j` : 'herbe à faire');
+    } else if (s.statut === 'semaine') {
+      score += Math.max(0, s.pct) * 70;
+      raisons.push(`herbe à faire d'ici ${Math.max(0, s.jours)} j`);
+    }
+    if (typeof Feuilles !== 'undefined' && Feuilles.estRue(rue.id)) {
+      const f = Feuilles.statut(rue.id);
+      if (f.etat === 'afaire') { score += 90; raisons.push('feuilles à ramasser'); }
+      else if (f.etat === 'bientot') { score += 40; raisons.push('feuilles bientôt à ramasser'); }
+    }
+    prevus.filter(p => p.rueIds.includes(rue.id)).forEach(p => {
+      const nom = p.intervention || p.type || 'intervention';
+      if (p.date <= today) {
+        score += 50; raisons.push(`${nom} prévu${p.date < today ? ' le ' + fmtJM(p.date) : ' aujourd’hui'}`);
+        if (alerte) { score -= 30; raisons.push(`${alerte.titre.toLowerCase()} : report probable`); }
+      } else { score += 15; raisons.push(`${nom} prévu ${fmtJour(p.date)}`); }
+    });
+    if (score <= 0) return; // rien d'urgent sur cette rue : la classe seule ne suffit pas
+    score += rue.classe * 4;
+    raisons.push(`classe ${rue.classe}`);
+    out.push({ rue, score, raisons });
+  });
+  return out.sort((a, b) => b.score - a.score || b.rue.classe - a.rue.classe || a.rue.voie.localeCompare(b.rue.voie, 'fr'));
+}
+function blocCinqAFaire() {
+  if (!state.passages.length && !(state.planning || []).length) return '';
+  const alerte = typeof alerteMeteo === 'function' ? alerteMeteo(aujourdhui()) : null;
+  const L = rueUrgences().slice(0, 5);
+  let h = `<h2>Aujourd'hui, les 5 à faire</h2>`;
+  if (alerte) h += `<div class="notice warn"><strong>${esc(alerte.titre)}</strong> ${esc(alerte.detail)} Le rotofil et le coordonné sont en général annulés.</div>`;
+  if (!L.length) return h + `<p class="muted small">Rien d'urgent aujourd'hui.</p>`;
+  return h + `<div class="list">${L.map(({ rue, raisons }) => `<div>${ligneRue(rue)}<div class="muted small" style="padding:4px 14px 0">${raisons.map(esc).join(' · ')}</div></div>`).join('')}</div>`;
+}
+
 function rendrePriorites() {
   const rues = secteur()?.rues || [];
   const groupes = { retard: [], semaine: [], quinzaine: [], ok: [], inconnu: [] };
@@ -321,24 +370,27 @@ function rendrePriorites() {
 
   let html = '';
   if (!state.passages.length) {
-    html += `<div class="notice"><strong>Pour démarrer :</strong> appuie sur <strong>+ Saisir</strong> en bas de l'écran, ou coche des rues dans l'onglet <strong>Rues</strong>, pour indiquer ce qui a été fait ou ce que tu prévois, ou importe ton tableau Excel depuis l'onglet <strong>Suivi</strong>. L'appli calculera ensuite toute seule quand y retourner.</div>`;
+    html += `<div class="notice"><strong>Pour démarrer :</strong> appuie sur <strong>+ Saisir</strong> en bas de l'écran pour noter ce qui a été fait ou ce que tu prévois. Pour plusieurs rues d'un coup, coche-les dans l'onglet <strong>Rues</strong> puis appuie sur <strong>Saisir</strong>. Tu peux aussi importer ton tableau Excel depuis l'onglet <strong>Suivi</strong>. L'appli calculera ensuite toute seule quand y retourner.</div>`;
   }
   if (meteo.erreur) {
     html += `<div class="notice warn">La météo n'a pas pu être récupérée (${esc(meteo.erreur)}). Les calculs utilisent ${nObs ? 'les dernières données connues et ' : ''}des moyennes saisonnières. <button class="btn" data-act="meteo">Réessayer</button></div>`;
   }
+  html += blocCinqAFaire();
   html += `<div class="resume">${['retard', 'semaine', 'quinzaine'].map(k => `<button class="${k}" data-goto="${k}"><b>${groupes[k].length}</b><span>${k === 'retard' ? 'en retard' : k === 'semaine' ? 'cette semaine' : 'sous 15 jours'}</span></button>`).join('')}</div>`;
   html += `<p class="resume-2">${groupes.ok.length} à jour${groupes.inconnu.length ? ` · <button data-goto="inconnu">${groupes.inconnu.length} jamais saisie${groupes.inconnu.length > 1 ? 's' : ''}</button>` : ''}</p>`;
   html += `<p class="meteo-ligne">Météo 7 jours : ${virgule(tm / 7)} °C · ${virgule(pluie)} mm · pousse ${pousse}${nObs < 7 ? ` <span>(${7 - nObs} j estimé${7 - nObs > 1 ? 's' : ''} sur moyennes)</span>` : ''}</p>`;
   if (typeof blocPlanning === 'function') html += blocPlanning();
   if (typeof blocFeuilles === 'function') html += blocFeuilles();
 
+  let toutes = '';
   for (const k of ['retard', 'semaine', 'quinzaine', 'ok']) {
     if (!groupes[k].length) continue;
-    html += `<h2 id="g-${k}">${STATUTS[k].label} <span class="muted">(${groupes[k].length})</span></h2><div class="list">${groupes[k].map(r => ligneRue(r)).join('')}</div>`;
+    toutes += `<h2 id="g-${k}">${STATUTS[k].label} <span class="muted">(${groupes[k].length})</span></h2><div class="list">${groupes[k].map(r => ligneRue(r)).join('')}</div>`;
   }
   if (groupes.inconnu.length) {
-    html += `<details class="section" id="g-inconnu"><summary>Jamais saisies <span class="muted">(${groupes.inconnu.length})</span></summary><div class="list">${groupes.inconnu.map(r => ligneRue(r)).join('')}</div></details>`;
+    toutes += `<details class="section" id="g-inconnu"><summary>Jamais saisies <span class="muted">(${groupes.inconnu.length})</span></summary><div class="list">${groupes.inconnu.map(r => ligneRue(r)).join('')}</div></details>`;
   }
+  html += `<details class="section" id="g-toutes"><summary>Voir toutes les priorités <span class="muted">(${rues.length} rues)</span></summary>${toutes}</details>`;
   view.innerHTML = html;
 }
 
@@ -377,6 +429,7 @@ function majSelbar() {
   const n = ui.selection.size;
   $('#selbar').hidden = !(onglet === 'rues' && n > 0);
   $('#selCount').textContent = `${n} rue${n > 1 ? 's' : ''}`;
+  $('#selGo').textContent = `Saisir (${n} rue${n > 1 ? 's' : ''})`;
 }
 
 function rendreHistorique() {
@@ -499,6 +552,40 @@ function rendre() {
   if (onglet !== 'rues') $('#selbar').hidden = true;
 }
 
+/* Historique d'une rue : passages herbe + interventions du tableau + interventions saisies (« réalisé »), triés du plus récent au plus ancien */
+function historiqueRue(id) {
+  const ps = passagesDe(id);
+  const duTableau = typeof interventionsDeRue === 'function' ? interventionsDeRue(id) : [];
+  const idsTableau = new Set(duTableau.map(l => `tb-${l.cle}-${id}`));
+  const idsAffiches = new Set(ps.map(p => p.id));
+  const lignes = [];
+  ps.forEach(p => {
+    if (idsTableau.has(p.id)) return; // déjà montré par la ligne « Intervention du tableau »
+    const type = p.source === 'planning' ? 'Intervention saisie · herbe' : 'Passage herbe';
+    const details = [p.etat ? ETATS[p.etat]?.label : null, p.equipe, p.auteur ? 'saisi par ' + p.auteur : null].filter(Boolean).map(esc).join(' · ');
+    lignes.push({ date: p.date, cree: p.creeLe || 0, html: `<div class="hist-item"><div class="grow"><strong>${fmtDate(p.date)}</strong> <span class="muted small">· ${type}</span>
+      <div class="muted small">${details}</div>
+      ${p.remarque ? `<div class="small">${esc(p.remarque)}</div>` : ''}</div>
+      ${p.source === 'tableau' ? `<span class="muted small" title="À corriger dans le tableau Excel">tableau n°${esc(p.ref ?? '?')}</span>` : `<button class="btn danger" data-del="${p.id}">Suppr.</button>`}</div>` });
+  });
+  duTableau.forEach(l => lignes.push({ date: l.date, cree: 0, html: `<div class="hist-item"><div class="grow">
+      <strong>${fmtDate(l.date)}</strong> <span class="muted small">· Intervention du tableau · ${esc(l.type || 'Autre')}${l.statut !== 'realise' ? ' · ' + esc(l.statutTexte || l.statut) : ''}</span>
+      <div class="small">${[l.intervention, l.materiel, l.poches ? l.poches + ' poches' : null].filter(Boolean).map(esc).join(' · ')}</div>
+      ${l.agents ? `<div class="muted small">${esc(l.agents)}</div>` : ''}</div></div>` }));
+  (state.planning || []).forEach(it => {
+    if (it.statut !== 'realise' || !it.rueIds.includes(id) || idsAffiches.has(`pl-${it.id}-${id}`)) return;
+    const d = it.dateRealise || it.date;
+    lignes.push({ date: d, cree: it.creeLe || 0, html: `<div class="hist-item"><div class="grow">
+      <strong>${fmtDate(d)}</strong> <span class="muted small">· Intervention saisie · ${esc(it.type || 'Autre')}</span>
+      <div class="small">${[it.intervention, it.materiel].filter(Boolean).map(esc).join(' · ')}</div>
+      ${it.agents ? `<div class="muted small">${esc(it.agents)}</div>` : ''}
+      ${it.observations ? `<div class="small">${esc(it.observations)}</div>` : ''}</div></div>` });
+  });
+  lignes.sort((a, b) => b.date.localeCompare(a.date) || b.cree - a.cree);
+  return `<h3 style="font-size:15px;margin:14px 0 6px">Historique (${lignes.length})</h3>` +
+    (lignes.length ? `<div class="hist-box">${lignes.map(l => l.html).join('')}</div>` : '<p class="muted small">Aucun passage ni intervention.</p>');
+}
+
 /* ---------- Détail d'une rue ---------- */
 let rueOuverte = null;
 function ouvrirRue(id) {
@@ -521,20 +608,9 @@ function ouvrirRue(id) {
       <dt>Apprentissage</dt><dd>${s.nObs ? `seuil ajusté × ${virgule(s.coef, 2)} d'après ${s.nObs} observation${s.nObs > 1 ? 's' : ''}` : 'pas encore d’observation (il faut au moins 2 passages avec un état constaté)'}</dd>
     </dl>`;
   }
-  const ps = passagesDe(id).slice().reverse();
-  html += `<h3 style="font-size:15px;margin:14px 0 6px">Passages herbe (${ps.length})</h3>`;
-  html += ps.length ? `<div class="hist-box">${ps.map(p => `<div class="hist-item"><div class="grow"><strong>${fmtDate(p.date)}</strong>
-      <div class="muted small">${[p.etat ? ETATS[p.etat]?.label : null, p.equipe, p.auteur ? 'saisi par ' + p.auteur : null].filter(Boolean).map(esc).join(' · ')}</div>
-      ${p.remarque ? `<div class="small">${esc(p.remarque)}</div>` : ''}</div>
-      ${p.source === 'tableau' ? `<span class="muted small" title="À corriger dans le tableau Excel">tableau n°${esc(p.ref ?? '?')}</span>` : `<button class="btn danger" data-del="${p.id}">Suppr.</button>`}</div>`).join('')}</div>` : '<p class="muted small">Aucun passage.</p>';
+  html += `<p style="margin:12px 0 0"><button class="btn primary" data-saisir-ici="${id}">Saisir ici</button></p>`;
+  html += historiqueRue(id);
   if (typeof blocFeuillesRue === 'function') html += blocFeuillesRue(id);
-  const its = typeof interventionsDeRue === 'function' ? interventionsDeRue(id) : [];
-  if (its.length) {
-    html += `<h3 style="font-size:15px;margin:14px 0 6px">Interventions du tableau (${its.length})</h3><div class="hist-box">${its.map(l => `<div class="hist-item"><div class="grow">
-      <strong>${fmtDate(l.date)}</strong> <span class="muted small">· ${esc(l.type || 'Autre')}${l.statut !== 'realise' ? ' · ' + esc(l.statutTexte || l.statut) : ''}</span>
-      <div class="small">${[l.intervention, l.materiel, l.poches ? l.poches + ' poches' : null].filter(Boolean).map(esc).join(' · ')}</div>
-      ${l.agents ? `<div class="muted small">${esc(l.agents)}</div>` : ''}</div></div>`).join('')}</div>`;
-  }
   $('#drBody').innerHTML = html;
   const dlg = $('#dlgRue');
   if (!dlg.open) dlg.showModal();
@@ -630,7 +706,7 @@ view.addEventListener('click', e => {
   const go = t.closest('[data-goto]');
   if (go) {
     const cible = document.getElementById('g-' + go.dataset.goto);
-    if (cible) { if (cible.tagName === 'DETAILS') cible.open = true; cible.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    if (cible) { for (let d = cible.closest('details'); d; d = d.parentElement?.closest('details')) d.open = true; cible.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
     return;
   }
   const act = t.closest('[data-act]');
@@ -689,6 +765,12 @@ $('#drClose2').addEventListener('click', fermerRue);
 $('#dlgRue').addEventListener('close', () => { rueOuverte = null; });
 $('#drPassage').addEventListener('click', () => { if (!rueOuverte) return; const id = rueOuverte; if (typeof ouvrirSaisie === 'function') { $('#dlgRue').close(); ouvrirSaisie({ rueIds: [id], mode: 'fait', inter: typeof Feuilles !== 'undefined' && Feuilles.estRue(id) ? [] : ['rotofil'] }); } else ouvrirPassage([id]); });
 $('#drBody').addEventListener('click', e => { const d = e.target.closest('[data-del]'); if (d) supprimerPassage(d.dataset.del); });
+$('#drBody').addEventListener('click', e => {
+  const b = e.target.closest('[data-saisir-ici]'); if (!b || typeof ouvrirSaisie !== 'function') return;
+  const id = b.dataset.saisirIci;
+  $('#dlgRue').close();
+  ouvrirSaisie({ rueIds: [id] });
+});
 
 const selSecteur = $('#secteur');
 selSecteur.innerHTML = SECTEURS.map(s => `<option value="${s.id}">${esc(s.nom)}</option>`).join('');

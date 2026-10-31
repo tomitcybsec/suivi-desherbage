@@ -40,5 +40,15 @@
 3. Base partagée (synchro PC / téléphone / collègues) — seulement après validation de sa hiérarchie.
 4. Tableau de bord de synthèse.
 
+## Idée en réserve : notifications (téléphone / PC) — pas commencée
+Il n'existe aucune notification aujourd'hui (seulement des alertes visibles dans l'appli). Souhaits du propriétaire, à reprendre quand il le décide :
+- **Pluie ou vent fort prévu** : prévenir **3-4 jours avant** (ex. le vendredi pour le lundi), puis rappel **la veille au soir** et **le matin**.
+- **Forte pluie / avaloirs** : même principe (J-3/J-4, puis J-2, J-1).
+- **Rues à ramasser (feuilles)** : même principe, prévenir à l'avance.
+- **Intervention prévue non faite / à reporter** et **vigilance officielle Météo-France** : d'accord aussi.
+- **Attention à ne pas saturer** : prévoir des réglages (activer/couper chaque type, heure d'envoi, rien le week-end, rien si rien à signaler), éviter les doublons.
+- **Limites techniques** : appli fermée = il faut un serveur d'envoi (clé secrète interdite dans le dépôt, à valider par sa hiérarchie, lié à la « base partagée ») ; iPhone = appli ajoutée à l'écran d'accueil, iOS 16.4 minimum. Options simples : notifications appli ouverte seulement, rappel agenda, e-mail.
+- Reste à décider : téléphone et/ou PC, Android ou iPhone, niveau (appli ouverte ou fermée).
+
 ## Tester
 Ouvrir `index.html` via un petit serveur local (`python3 -m http.server`) ; la météo vient d'Open-Meteo (gratuit, sans clé). Vérifier sur largeur téléphone (390 px) et en mode sombre.
