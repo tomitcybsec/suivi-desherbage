@@ -3,7 +3,7 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.9.5';
+const VERSION = '1.9.6';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
 const WX_MAX_AGE_MS = 3 * 3600 * 1000; // on actualise la météo toutes les 3 h au plus
@@ -607,6 +607,7 @@ function ouvrirRue(id) {
       <dt>Apprentissage</dt><dd>${s.nObs ? `seuil ajusté × ${virgule(s.coef, 2)} d'après ${s.nObs} observation${s.nObs > 1 ? 's' : ''}` : 'pas encore d’observation (il faut au moins 2 passages avec un état constaté)'}</dd>
     </dl>`;
   }
+  html += `<p style="margin:12px 0 0"><button class="btn primary" data-saisir-ici="${id}">Saisir ici</button></p>`;
   html += historiqueRue(id);
   if (typeof blocFeuillesRue === 'function') html += blocFeuillesRue(id);
   $('#drBody').innerHTML = html;
@@ -763,6 +764,12 @@ $('#drClose2').addEventListener('click', fermerRue);
 $('#dlgRue').addEventListener('close', () => { rueOuverte = null; });
 $('#drPassage').addEventListener('click', () => { if (!rueOuverte) return; const id = rueOuverte; if (typeof ouvrirSaisie === 'function') { $('#dlgRue').close(); ouvrirSaisie({ rueIds: [id], mode: 'fait', inter: typeof Feuilles !== 'undefined' && Feuilles.estRue(id) ? [] : ['rotofil'] }); } else ouvrirPassage([id]); });
 $('#drBody').addEventListener('click', e => { const d = e.target.closest('[data-del]'); if (d) supprimerPassage(d.dataset.del); });
+$('#drBody').addEventListener('click', e => {
+  const b = e.target.closest('[data-saisir-ici]'); if (!b || typeof ouvrirSaisie !== 'function') return;
+  const id = b.dataset.saisirIci;
+  $('#dlgRue').close();
+  ouvrirSaisie({ rueIds: [id] });
+});
 
 const selSecteur = $('#secteur');
 selSecteur.innerHTML = SECTEURS.map(s => `<option value="${s.id}">${esc(s.nom)}</option>`).join('');
