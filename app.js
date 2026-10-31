@@ -3,7 +3,7 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.9.13';
+const VERSION = '1.9.14';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
 const WX_MAX_AGE_MS = 3 * 3600 * 1000; // on actualise la météo toutes les 3 h au plus
@@ -587,6 +587,15 @@ function historiqueRue(id) {
     (lignes.length ? `<div class="hist-box">${lignes.map(l => l.html).join('')}</div>` : '<p class="muted small">Aucun passage ni intervention.</p>');
 }
 
+/* Boutons « Itinéraire » (Google Maps) et « Waze » : liens simples, sans clé d'API */
+function boutonsItineraire(rue) {
+  const q = encodeURIComponent(`${rue.voie}${rue.troncon ? ` (${rue.troncon})` : ''}, Toulouse, France`);
+  return `<div class="nav-rue">
+    <a class="btn" href="https://www.google.com/maps/dir/?api=1&destination=${q}&travelmode=driving" target="_blank" rel="noopener">Itinéraire</a>
+    <a class="btn" href="https://waze.com/ul?q=${q}&navigate=yes" target="_blank" rel="noopener">Waze</a>
+  </div>`;
+}
+
 /* ---------- Détail d'une rue ---------- */
 let rueOuverte = null;
 function ouvrirRue(id) {
@@ -594,7 +603,7 @@ function ouvrirRue(id) {
   rueOuverte = id;
   const s = statutRue(rue);
   $('#drTitre').textContent = rue.voie;
-  let html = `<dl class="kv">
+  let html = boutonsItineraire(rue) + `<dl class="kv">
     ${rue.troncon ? `<dt>Tronçon</dt><dd>${esc(rue.troncon)}</dd>` : ''}
     <dt>Longueur</dt><dd>${rue.longueur ? rue.longueur + ' m' : 'non renseignée'}</dd>
     <dt>Classe pôle</dt><dd>${rue.classe}</dd>`;
