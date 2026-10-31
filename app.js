@@ -3,7 +3,7 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.9.4';
+const VERSION = '1.9.5';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
 const WX_MAX_AGE_MS = 3 * 3600 * 1000; // on actualise la météo toutes les 3 h au plus
@@ -301,6 +301,55 @@ function ligneRue(rue, { selection = false } = {}) {
   </div>`;
 }
 
+/* Les 5 rues les plus urgentes aujourd'hui.
+   Points : retard d'herbe (la repousse intègre déjà la météo prévue), classe pôle (+4 par classe),
+   feuilles à ramasser, intervention prévue (aujourd'hui ou en retard +50, dans 2 jours +15).
+   Météo : s'il pleut ou s'il y a du vent fort aujourd'hui, une intervention prévue ce jour perd 30 points (report probable). */
+function rueUrgences() {
+  const today = aujourdhui();
+  const alerte = typeof alerteMeteo === 'function' ? alerteMeteo(today) : null;
+  const prevus = (state.planning || []).filter(p => p.statut === 'prevu' && p.date <= addJours(today, 2));
+  const out = [];
+  (secteur()?.rues || []).forEach(rue => {
+    const s = statutRue(rue), raisons = [];
+    let score = 0;
+    if (s.statut === 'retard') {
+      score += 100 + Math.min(60, Math.max(0, s.pct - 1) * 60);
+      const j = Math.max(0, ecartJours(s.echeance || today, today));
+      raisons.push(j ? `herbe en retard de ${j} j` : 'herbe à faire');
+    } else if (s.statut === 'semaine') {
+      score += Math.max(0, s.pct) * 70;
+      raisons.push(`herbe à faire d'ici ${Math.max(0, s.jours)} j`);
+    }
+    if (typeof Feuilles !== 'undefined' && Feuilles.estRue(rue.id)) {
+      const f = Feuilles.statut(rue.id);
+      if (f.etat === 'afaire') { score += 90; raisons.push('feuilles à ramasser'); }
+      else if (f.etat === 'bientot') { score += 40; raisons.push('feuilles bientôt à ramasser'); }
+    }
+    prevus.filter(p => p.rueIds.includes(rue.id)).forEach(p => {
+      const nom = p.intervention || p.type || 'intervention';
+      if (p.date <= today) {
+        score += 50; raisons.push(`${nom} prévu${p.date < today ? ' le ' + fmtJM(p.date) : ' aujourd’hui'}`);
+        if (alerte) { score -= 30; raisons.push(`${alerte.titre.toLowerCase()} : report probable`); }
+      } else { score += 15; raisons.push(`${nom} prévu ${fmtJour(p.date)}`); }
+    });
+    if (score <= 0) return; // rien d'urgent sur cette rue : la classe seule ne suffit pas
+    score += rue.classe * 4;
+    raisons.push(`classe ${rue.classe}`);
+    out.push({ rue, score, raisons });
+  });
+  return out.sort((a, b) => b.score - a.score || b.rue.classe - a.rue.classe || a.rue.voie.localeCompare(b.rue.voie, 'fr'));
+}
+function blocCinqAFaire() {
+  if (!state.passages.length && !(state.planning || []).length) return '';
+  const alerte = typeof alerteMeteo === 'function' ? alerteMeteo(aujourdhui()) : null;
+  const L = rueUrgences().slice(0, 5);
+  let h = `<h2>Aujourd'hui, les 5 à faire</h2>`;
+  if (alerte) h += `<div class="notice warn"><strong>${esc(alerte.titre)}</strong> ${esc(alerte.detail)} Le rotofil et le coordonné sont en général annulés.</div>`;
+  if (!L.length) return h + `<p class="muted small">Rien d'urgent aujourd'hui.</p>`;
+  return h + `<div class="list">${L.map(({ rue, raisons }) => `<div>${ligneRue(rue)}<div class="muted small" style="padding:4px 14px 0">${raisons.map(esc).join(' · ')}</div></div>`).join('')}</div>`;
+}
+
 function rendrePriorites() {
   const rues = secteur()?.rues || [];
   const groupes = { retard: [], semaine: [], quinzaine: [], ok: [], inconnu: [] };
@@ -326,19 +375,22 @@ function rendrePriorites() {
   if (meteo.erreur) {
     html += `<div class="notice warn">La météo n'a pas pu être récupérée (${esc(meteo.erreur)}). Les calculs utilisent ${nObs ? 'les dernières données connues et ' : ''}des moyennes saisonnières. <button class="btn" data-act="meteo">Réessayer</button></div>`;
   }
+  html += blocCinqAFaire();
   html += `<div class="resume">${['retard', 'semaine', 'quinzaine'].map(k => `<button class="${k}" data-goto="${k}"><b>${groupes[k].length}</b><span>${k === 'retard' ? 'en retard' : k === 'semaine' ? 'cette semaine' : 'sous 15 jours'}</span></button>`).join('')}</div>`;
   html += `<p class="resume-2">${groupes.ok.length} à jour${groupes.inconnu.length ? ` · <button data-goto="inconnu">${groupes.inconnu.length} jamais saisie${groupes.inconnu.length > 1 ? 's' : ''}</button>` : ''}</p>`;
   html += `<p class="meteo-ligne">Météo 7 jours : ${virgule(tm / 7)} °C · ${virgule(pluie)} mm · pousse ${pousse}${nObs < 7 ? ` <span>(${7 - nObs} j estimé${7 - nObs > 1 ? 's' : ''} sur moyennes)</span>` : ''}</p>`;
   if (typeof blocPlanning === 'function') html += blocPlanning();
   if (typeof blocFeuilles === 'function') html += blocFeuilles();
 
+  let toutes = '';
   for (const k of ['retard', 'semaine', 'quinzaine', 'ok']) {
     if (!groupes[k].length) continue;
-    html += `<h2 id="g-${k}">${STATUTS[k].label} <span class="muted">(${groupes[k].length})</span></h2><div class="list">${groupes[k].map(r => ligneRue(r)).join('')}</div>`;
+    toutes += `<h2 id="g-${k}">${STATUTS[k].label} <span class="muted">(${groupes[k].length})</span></h2><div class="list">${groupes[k].map(r => ligneRue(r)).join('')}</div>`;
   }
   if (groupes.inconnu.length) {
-    html += `<details class="section" id="g-inconnu"><summary>Jamais saisies <span class="muted">(${groupes.inconnu.length})</span></summary><div class="list">${groupes.inconnu.map(r => ligneRue(r)).join('')}</div></details>`;
+    toutes += `<details class="section" id="g-inconnu"><summary>Jamais saisies <span class="muted">(${groupes.inconnu.length})</span></summary><div class="list">${groupes.inconnu.map(r => ligneRue(r)).join('')}</div></details>`;
   }
+  html += `<details class="section" id="g-toutes"><summary>Voir toutes les priorités <span class="muted">(${rues.length} rues)</span></summary>${toutes}</details>`;
   view.innerHTML = html;
 }
 
@@ -652,7 +704,7 @@ view.addEventListener('click', e => {
   const go = t.closest('[data-goto]');
   if (go) {
     const cible = document.getElementById('g-' + go.dataset.goto);
-    if (cible) { if (cible.tagName === 'DETAILS') cible.open = true; cible.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    if (cible) { for (let d = cible.closest('details'); d; d = d.parentElement?.closest('details')) d.open = true; cible.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
     return;
   }
   const act = t.closest('[data-act]');
