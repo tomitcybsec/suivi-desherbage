@@ -3,7 +3,7 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.9.6';
+const VERSION = '1.9.7';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
 const WX_MAX_AGE_MS = 3 * 3600 * 1000; // on actualise la météo toutes les 3 h au plus
@@ -370,7 +370,7 @@ function rendrePriorites() {
 
   let html = '';
   if (!state.passages.length) {
-    html += `<div class="notice"><strong>Pour démarrer :</strong> appuie sur <strong>+ Saisir</strong> en bas de l'écran, ou coche des rues dans l'onglet <strong>Rues</strong>, pour indiquer ce qui a été fait ou ce que tu prévois, ou importe ton tableau Excel depuis l'onglet <strong>Suivi</strong>. L'appli calculera ensuite toute seule quand y retourner.</div>`;
+    html += `<div class="notice"><strong>Pour démarrer :</strong> appuie sur <strong>+ Saisir</strong> en bas de l'écran pour noter ce qui a été fait ou ce que tu prévois. Pour plusieurs rues d'un coup, coche-les dans l'onglet <strong>Rues</strong> puis appuie sur <strong>Saisir</strong>. Tu peux aussi importer ton tableau Excel depuis l'onglet <strong>Suivi</strong>. L'appli calculera ensuite toute seule quand y retourner.</div>`;
   }
   if (meteo.erreur) {
     html += `<div class="notice warn">La météo n'a pas pu être récupérée (${esc(meteo.erreur)}). Les calculs utilisent ${nObs ? 'les dernières données connues et ' : ''}des moyennes saisonnières. <button class="btn" data-act="meteo">Réessayer</button></div>`;
@@ -429,6 +429,7 @@ function majSelbar() {
   const n = ui.selection.size;
   $('#selbar').hidden = !(onglet === 'rues' && n > 0);
   $('#selCount').textContent = `${n} rue${n > 1 ? 's' : ''}`;
+  $('#selGo').textContent = `Saisir (${n} rue${n > 1 ? 's' : ''})`;
 }
 
 function rendreHistorique() {
