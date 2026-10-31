@@ -6,7 +6,7 @@
 'use strict';
 
 const Feuilles = (() => {
-  state.feuilles = Object.assign({ rues: null, seuil: 550 }, state.feuilles || {});
+  state.feuilles = Object.assign({ rues: null, seuil: 500 }, state.feuilles || {});
   const N = s => Dictee.norm(s);
 
   const ruesDefaut = () => secteur()?.ruesFeuilles || [];
