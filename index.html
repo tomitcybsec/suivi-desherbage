@@ -5,13 +5,13 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Suivi désherbage</title>
 <meta name="description" content="Suivi des passages de désherbage par rue et prévision de repousse selon la météo.">
-<meta name="theme-color" content="#202326">
+<meta name="theme-color" content="#6b3fa0">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
-<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-maskable-512.png">
 <style>
 :root{
   --bg:#efeeea; --surface:#ffffff; --surface2:#f6f5f2; --text:#1c1c1c; --muted:#55575a; --line:#d6d4cd;
@@ -19,14 +19,19 @@
   --accent:#f2c200; --accent-ink:#1c1c1c; --focus:#1c1c1c;
   --retard:#b3261e; --retard-ink:#ffffff;
   --semaine:#1c1c1c; --quinzaine:#1c1c1c; --ok:#55575a; --inconnu:#8a8c8f;
+  /* touche Toulouse (violet) — ne remplace PAS --accent, qui reste le jaune de l'action principale */
+  --toulouse:#6b3fa0; --toulouse-clair:#dccfec; --mortier:rgba(255,255,255,.32);
+  --c5:#6b3fa0; --c4:#8a63bd; --c3:#b8553a; --c2:#d08a6e; --c1:#dcb5a5; --c0:#e6d4cb;
 }
 @media (prefers-color-scheme: dark){
   :root{
-    --bg:#141617; --surface:#1e2124; --surface2:#25292c; --text:#ecebe7; --muted:#a4a8ad; --line:#363a3e;
-    --head:#0c0e0f; --head-ink:#ffffff; --head-muted:#9ca1a6;
+    --bg:#14181d; --surface:#1d232a; --surface2:#25292c; --text:#ecebe7; --muted:#a4a8ad; --line:#363a3e;
+    --head:#0e1215; --head-ink:#ffffff; --head-muted:#9ca1a6;
     --accent:#f2c200; --accent-ink:#1c1c1c; --focus:#f2c200;
     --retard:#e5534b; --retard-ink:#ffffff;
     --semaine:#ecebe7; --quinzaine:#ecebe7; --ok:#a4a8ad; --inconnu:#7d8186;
+    --toulouse:#c9a7f0; --toulouse-clair:#3a2f4c; --mortier:rgba(20,10,40,.28);
+    --c5:#c9a7f0; --c4:#a98bd6; --c3:#e0866a; --c2:#c98f79; --c1:#a8857a; --c0:#7e6d66;
   }
 }
 *{box-sizing:border-box}
@@ -42,17 +47,27 @@ button,input,select,textarea{font:inherit;color:inherit}
 header.top{background:var(--head);color:var(--head-ink);padding:14px 0 0;position:sticky;top:0;z-index:20}
 .top-row{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
 .top h1{font-size:20px;margin:0;font-weight:700}
+.top-row{align-items:center}
+.marque{display:flex;align-items:center;gap:10px}
+.marque-txt{display:flex;flex-direction:column;align-items:flex-start;min-width:0}
+.marque-txt h1{line-height:1.15}
+.marque-txt select{font-size:14px;line-height:1.2;padding:0}
+.croix{width:40px;height:40px;flex:none;color:var(--head-ink)}
 .top select{background:transparent;border:0;color:var(--head-muted);font-size:14px;padding:2px 0;cursor:pointer}
 .top select option{color:#111}
 .pill{margin-left:auto;font-size:13px;color:var(--head-muted);cursor:pointer;white-space:nowrap;text-decoration:underline;text-decoration-color:transparent}
 .pill:hover{text-decoration-color:currentColor}
 .pill.warn{color:var(--accent);font-weight:700}
+/* Bande de briques sous l'en-tête (CSS seul) : 2 rangées de briques de 16 × 4 px, joints décalés */
+header.top::after{content:"";display:block;height:8px;background-color:var(--toulouse);
+  background-image:linear-gradient(90deg,var(--mortier) 1px,transparent 1px),linear-gradient(90deg,var(--mortier) 1px,transparent 1px),linear-gradient(0deg,var(--mortier) 1px,transparent 1px);
+  background-size:16px 4px,16px 4px,100% 4px;background-position:0 0,8px 4px,0 0;background-repeat:repeat-x,repeat-x,repeat-y}
 nav.tabs{display:flex;gap:2px;margin-top:12px}
 nav.tabs button{flex:1;background:none;border:0;color:var(--head-muted);padding:11px 4px;cursor:pointer;white-space:nowrap;font-size:15px}
-nav.tabs button[aria-selected="true"]{background:var(--bg);color:var(--text);font-weight:700;border-radius:6px 6px 0 0}
+nav.tabs button[aria-selected="true"]{background:var(--bg);color:var(--text);font-weight:700;border-radius:6px 6px 0 0;box-shadow:inset 0 -4px 0 var(--toulouse)}
 
 main.wrap{padding-top:14px;padding-bottom:120px}
-h2{font-size:15px;font-weight:700;margin:20px 0 8px}
+h2{font-size:15px;font-weight:700;margin:20px 0 8px;padding-bottom:4px;border-bottom:2px solid var(--toulouse)}
 h2 .muted{font-weight:400}
 .muted{color:var(--muted)}
 .small{font-size:14px}
@@ -74,13 +89,26 @@ h2 .muted{font-weight:400}
 .list{display:flex;flex-direction:column;gap:6px}
 .rue{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--line);padding:12px 14px;min-height:64px;cursor:pointer;text-align:left;width:100%}
 .rue:hover{border-color:var(--text)}
+/* liseré de 8 px à gauche selon la classe pôle (ne bouge pas au survol) */
+.rue[data-classe]{padding-left:20px}
+.rue[data-classe="5"]{box-shadow:inset 8px 0 0 var(--c5)}
+.rue[data-classe="4"]{box-shadow:inset 8px 0 0 var(--c4)}
+.rue[data-classe="3"]{box-shadow:inset 8px 0 0 var(--c3)}
+.rue[data-classe="2"]{box-shadow:inset 8px 0 0 var(--c2)}
+.rue[data-classe="1"]{box-shadow:inset 8px 0 0 var(--c1)}
+.rue[data-classe="0"]{box-shadow:inset 8px 0 0 var(--c0)}
+.legende{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin:14px 0 0;font-size:13.5px;color:var(--muted)}
+.legende span{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.legende i{display:inline-block;width:8px;height:18px;border:1px solid var(--line)}
+.legende .sw5{background:var(--c5)}.legende .sw4{background:var(--c4)}.legende .sw3{background:var(--c3)}
+.legende .sw2{background:var(--c2)}.legende .sw1{background:var(--c1)}.legende .sw0{background:var(--c0)}
 .rue .main{flex:1;min-width:0}
 .rue .nom{font-weight:700;font-size:17px;overflow:hidden;text-overflow:ellipsis}
 .rue .meta{font-size:13.5px;color:var(--muted)}
 .rue .right{text-align:right;font-size:15px;white-space:nowrap}
 .rue .right.semaine{font-weight:700}
 .rue .right.inconnu{color:var(--inconnu);font-size:14px}
-.rue input[type=checkbox]{width:26px;height:26px;flex:none;accent-color:var(--text)}
+.rue input[type=checkbox]{width:26px;height:26px;flex:none;accent-color:var(--toulouse)}
 .tag{display:inline-block;font-size:12.5px;font-weight:700;letter-spacing:.04em;padding:3px 7px;background:var(--retard);color:var(--retard-ink);text-transform:uppercase}
 .chip{display:inline-block;font-size:13px;font-weight:700;padding:2px 7px;border:1px solid currentColor}
 .chip.retard{background:var(--retard);color:var(--retard-ink);border-color:var(--retard)}
@@ -93,6 +121,8 @@ h2 .muted{font-weight:400}
 .toolbar input[type=search]{flex:1;min-width:180px}
 .btn{background:var(--surface);border:1px solid var(--line);padding:11px 16px;cursor:pointer;font-weight:700;border-radius:0}
 .btn:hover{border-color:var(--text)}
+.btn:not(.primary):not(.danger):not(.mic){color:var(--toulouse);border-color:var(--toulouse)}
+.btn:not(.primary):not(.danger):not(.mic):hover{background:var(--toulouse-clair);border-color:var(--toulouse)}
 .btn.primary{background:var(--text);color:var(--bg);border-color:var(--text)}
 .btn.danger{color:var(--retard)}
 .btn:disabled{opacity:.45;cursor:default}
@@ -138,7 +168,7 @@ label.f{display:flex;flex-direction:column;gap:4px;font-size:14px;color:var(--mu
 label.f input,label.f select,label.f textarea{background:var(--surface);border:1px solid var(--line);padding:11px 12px;color:var(--text);font-size:16px;border-radius:0}
 .radios{display:flex;flex-direction:column;gap:6px}
 .radios label{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);padding:10px 12px;cursor:pointer;background:var(--surface)}
-.radios input{accent-color:var(--text);margin-top:3px;width:18px;height:18px}
+.radios input{accent-color:var(--toulouse);margin-top:3px;width:18px;height:18px}
 .radios label:has(input:checked){border:2px solid var(--text);padding:9px 11px}
 
 /* Fenêtres */
@@ -170,7 +200,7 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 .dict-sec{margin-top:14px}
 .dict-sec h4{margin:0 0 6px;font-size:15px}
 .dict-item{display:flex;gap:12px;align-items:center;padding:10px 12px;border:1px solid var(--line);margin-bottom:6px;background:var(--surface);cursor:pointer}
-.dict-item input{width:24px;height:24px;accent-color:var(--text);flex:none}
+.dict-item input{width:24px;height:24px;accent-color:var(--toulouse);flex:none}
 .dict-item .grow{flex:1;min-width:0}
 .dict-ambi{border:2px dashed var(--muted);padding:8px;margin-bottom:8px}
 .dict-ambi p{margin:0 0 6px;font-size:14px;font-weight:700}
@@ -181,8 +211,14 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 <header class="top">
   <div class="wrap">
     <div class="top-row">
-      <h1>Désherbage</h1>
-      <select id="secteur" aria-label="Secteur"></select>
+      <div class="marque">
+        <!-- croix occitane simplifiée (dessin maison, ce n'est pas un logo officiel) -->
+        <svg class="croix" viewBox="0 0 100 100" width="40" height="40" fill="currentColor" aria-hidden="true" focusable="false"><rect x="43" y="14" width="14" height="72"/><rect x="14" y="43" width="72" height="14"/><g><circle cx="50" cy="6.5" r="6"/><circle cx="35" cy="12" r="6"/><circle cx="65" cy="12" r="6"/></g><g transform="rotate(90 50 50)"><circle cx="50" cy="6.5" r="6"/><circle cx="35" cy="12" r="6"/><circle cx="65" cy="12" r="6"/></g><g transform="rotate(180 50 50)"><circle cx="50" cy="6.5" r="6"/><circle cx="35" cy="12" r="6"/><circle cx="65" cy="12" r="6"/></g><g transform="rotate(270 50 50)"><circle cx="50" cy="6.5" r="6"/><circle cx="35" cy="12" r="6"/><circle cx="65" cy="12" r="6"/></g></svg>
+        <div class="marque-txt">
+          <h1>Désherbage</h1>
+          <select id="secteur" aria-label="Secteur"></select>
+        </div>
+      </div>
       <span id="meteoPill" class="pill" role="button" tabindex="0" title="Actualiser la météo">Météo…</span>
     </div>
     <nav class="tabs" role="tablist">
