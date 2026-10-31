@@ -1,6 +1,6 @@
 /* Suivi désherbage — module « feuilles mortes ».
    Rues avec arbres : l'appli estime chaque jour la chute des feuilles (saison + gelées + vent),
-   l'additionne depuis le dernier ramassage (coordonné, pompage, souffleur, balayage manuel) et prévient
+   l'additionne depuis le dernier ramassage (coordonné ou pompage uniquement) et prévient
    quand il faut repasser.
    Les valeurs sont des estimations de départ, à caler avec le terrain (Réglages). */
 'use strict';
@@ -19,8 +19,9 @@ const Feuilles = (() => {
     persist(); invalider();
   }
 
-  // interventions qui enlèvent les feuilles
-  const estRamassage = (type, texte) => /coordonn|pompage|pomper|souffl|balayage manuel|feuille/.test(N(`${type} ${texte}`));
+  // interventions qui enlèvent les feuilles : seulement le coordonné et le pompage
+  // (le souffleur seul et le balayage manuel ne comptent pas)
+  const estRamassage = (type, texte) => /coordonn|pompage|pomper/.test(N(`${type} ${texte}`));
   function dernier(rueId) {
     const dates = [];
     (state.planning || []).forEach(p => {

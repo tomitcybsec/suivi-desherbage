@@ -3,7 +3,7 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.9.2';
+const VERSION = '1.9.3';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
 const WX_MAX_AGE_MS = 3 * 3600 * 1000; // on actualise la météo toutes les 3 h au plus
@@ -472,7 +472,7 @@ function rendreReglages() {
       <p class="small" style="margin-top:0">Rues avec arbres suivies : ${typeof Feuilles !== 'undefined' ? Feuilles.rues().map(id => esc(nomRue(rueParId(id)))).join(', ') || 'aucune' : '—'}.
       Pour en ajouter ou en retirer : ouvre la fiche de la rue et coche « Rue avec arbres ».</p>
       <p class="small">Chaque jour, l'appli estime la chute des feuilles (saison, avec un pic vers mi-novembre, renforcée après une gelée et par vent fort) et l'additionne depuis le dernier ramassage
-      (coordonné, pompage, souffleur, balayage manuel). Au-delà du seuil, la rue passe « à ramasser ».</p>
+      (seuls le coordonné et le pompage comptent ; le souffleur seul et le balayage manuel ne comptent pas). Au-delà du seuil, la rue passe « à ramasser ».</p>
       <div class="settings-grid"><label class="f">Seuil de ramassage<input type="number" min="50" step="10" id="rSeuilF" value="${state.feuilles ? state.feuilles.seuil : 500}"></label></div>
       <p class="muted small">Plus petit = on repasse plus souvent. Enregistre avec le bouton « Enregistrer les réglages » ci-dessus.</p>
     </div>
