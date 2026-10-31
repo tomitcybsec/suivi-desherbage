@@ -3,7 +3,7 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.9.3';
+const VERSION = '1.9.4';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
 const WX_MAX_AGE_MS = 3 * 3600 * 1000; // on actualise la météo toutes les 3 h au plus
@@ -499,6 +499,40 @@ function rendre() {
   if (onglet !== 'rues') $('#selbar').hidden = true;
 }
 
+/* Historique d'une rue : passages herbe + interventions du tableau + interventions saisies (« réalisé »), triés du plus récent au plus ancien */
+function historiqueRue(id) {
+  const ps = passagesDe(id);
+  const duTableau = typeof interventionsDeRue === 'function' ? interventionsDeRue(id) : [];
+  const idsTableau = new Set(duTableau.map(l => `tb-${l.cle}-${id}`));
+  const idsAffiches = new Set(ps.map(p => p.id));
+  const lignes = [];
+  ps.forEach(p => {
+    if (idsTableau.has(p.id)) return; // déjà montré par la ligne « Intervention du tableau »
+    const type = p.source === 'planning' ? 'Intervention saisie · herbe' : 'Passage herbe';
+    const details = [p.etat ? ETATS[p.etat]?.label : null, p.equipe, p.auteur ? 'saisi par ' + p.auteur : null].filter(Boolean).map(esc).join(' · ');
+    lignes.push({ date: p.date, cree: p.creeLe || 0, html: `<div class="hist-item"><div class="grow"><strong>${fmtDate(p.date)}</strong> <span class="muted small">· ${type}</span>
+      <div class="muted small">${details}</div>
+      ${p.remarque ? `<div class="small">${esc(p.remarque)}</div>` : ''}</div>
+      ${p.source === 'tableau' ? `<span class="muted small" title="À corriger dans le tableau Excel">tableau n°${esc(p.ref ?? '?')}</span>` : `<button class="btn danger" data-del="${p.id}">Suppr.</button>`}</div>` });
+  });
+  duTableau.forEach(l => lignes.push({ date: l.date, cree: 0, html: `<div class="hist-item"><div class="grow">
+      <strong>${fmtDate(l.date)}</strong> <span class="muted small">· Intervention du tableau · ${esc(l.type || 'Autre')}${l.statut !== 'realise' ? ' · ' + esc(l.statutTexte || l.statut) : ''}</span>
+      <div class="small">${[l.intervention, l.materiel, l.poches ? l.poches + ' poches' : null].filter(Boolean).map(esc).join(' · ')}</div>
+      ${l.agents ? `<div class="muted small">${esc(l.agents)}</div>` : ''}</div></div>` }));
+  (state.planning || []).forEach(it => {
+    if (it.statut !== 'realise' || !it.rueIds.includes(id) || idsAffiches.has(`pl-${it.id}-${id}`)) return;
+    const d = it.dateRealise || it.date;
+    lignes.push({ date: d, cree: it.creeLe || 0, html: `<div class="hist-item"><div class="grow">
+      <strong>${fmtDate(d)}</strong> <span class="muted small">· Intervention saisie · ${esc(it.type || 'Autre')}</span>
+      <div class="small">${[it.intervention, it.materiel].filter(Boolean).map(esc).join(' · ')}</div>
+      ${it.agents ? `<div class="muted small">${esc(it.agents)}</div>` : ''}
+      ${it.observations ? `<div class="small">${esc(it.observations)}</div>` : ''}</div></div>` });
+  });
+  lignes.sort((a, b) => b.date.localeCompare(a.date) || b.cree - a.cree);
+  return `<h3 style="font-size:15px;margin:14px 0 6px">Historique (${lignes.length})</h3>` +
+    (lignes.length ? `<div class="hist-box">${lignes.map(l => l.html).join('')}</div>` : '<p class="muted small">Aucun passage ni intervention.</p>');
+}
+
 /* ---------- Détail d'une rue ---------- */
 let rueOuverte = null;
 function ouvrirRue(id) {
@@ -521,20 +555,8 @@ function ouvrirRue(id) {
       <dt>Apprentissage</dt><dd>${s.nObs ? `seuil ajusté × ${virgule(s.coef, 2)} d'après ${s.nObs} observation${s.nObs > 1 ? 's' : ''}` : 'pas encore d’observation (il faut au moins 2 passages avec un état constaté)'}</dd>
     </dl>`;
   }
-  const ps = passagesDe(id).slice().reverse();
-  html += `<h3 style="font-size:15px;margin:14px 0 6px">Passages herbe (${ps.length})</h3>`;
-  html += ps.length ? `<div class="hist-box">${ps.map(p => `<div class="hist-item"><div class="grow"><strong>${fmtDate(p.date)}</strong>
-      <div class="muted small">${[p.etat ? ETATS[p.etat]?.label : null, p.equipe, p.auteur ? 'saisi par ' + p.auteur : null].filter(Boolean).map(esc).join(' · ')}</div>
-      ${p.remarque ? `<div class="small">${esc(p.remarque)}</div>` : ''}</div>
-      ${p.source === 'tableau' ? `<span class="muted small" title="À corriger dans le tableau Excel">tableau n°${esc(p.ref ?? '?')}</span>` : `<button class="btn danger" data-del="${p.id}">Suppr.</button>`}</div>`).join('')}</div>` : '<p class="muted small">Aucun passage.</p>';
+  html += historiqueRue(id);
   if (typeof blocFeuillesRue === 'function') html += blocFeuillesRue(id);
-  const its = typeof interventionsDeRue === 'function' ? interventionsDeRue(id) : [];
-  if (its.length) {
-    html += `<h3 style="font-size:15px;margin:14px 0 6px">Interventions du tableau (${its.length})</h3><div class="hist-box">${its.map(l => `<div class="hist-item"><div class="grow">
-      <strong>${fmtDate(l.date)}</strong> <span class="muted small">· ${esc(l.type || 'Autre')}${l.statut !== 'realise' ? ' · ' + esc(l.statutTexte || l.statut) : ''}</span>
-      <div class="small">${[l.intervention, l.materiel, l.poches ? l.poches + ' poches' : null].filter(Boolean).map(esc).join(' · ')}</div>
-      ${l.agents ? `<div class="muted small">${esc(l.agents)}</div>` : ''}</div></div>`).join('')}</div>`;
-  }
   $('#drBody').innerHTML = html;
   const dlg = $('#dlgRue');
   if (!dlg.open) dlg.showModal();
