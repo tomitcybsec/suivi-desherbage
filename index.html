@@ -45,6 +45,12 @@ button,input,select,textarea{font:inherit;color:inherit}
 header.top{background:var(--head);color:var(--head-ink);padding:14px 0 0;position:sticky;top:0;z-index:20}
 .top-row{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
 .top h1{font-size:20px;margin:0;font-weight:700}
+.top-row{align-items:center}
+.marque{display:flex;align-items:center;gap:10px}
+.marque-txt{display:flex;flex-direction:column;align-items:flex-start;min-width:0}
+.marque-txt h1{line-height:1.15}
+.marque-txt select{font-size:14px;line-height:1.2;padding:0}
+.croix{width:40px;height:40px;flex:none;color:var(--head-ink)}
 .top select{background:transparent;border:0;color:var(--head-muted);font-size:14px;padding:2px 0;cursor:pointer}
 .top select option{color:#111}
 .pill{margin-left:auto;font-size:13px;color:var(--head-muted);cursor:pointer;white-space:nowrap;text-decoration:underline;text-decoration-color:transparent}
@@ -186,8 +192,14 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 <header class="top">
   <div class="wrap">
     <div class="top-row">
-      <h1>Désherbage</h1>
-      <select id="secteur" aria-label="Secteur"></select>
+      <div class="marque">
+        <!-- croix occitane simplifiée (dessin maison, ce n'est pas un logo officiel) -->
+        <svg class="croix" viewBox="0 0 100 100" width="40" height="40" fill="currentColor" aria-hidden="true" focusable="false"><rect x="43" y="14" width="14" height="72"/><rect x="14" y="43" width="72" height="14"/><g><circle cx="50" cy="6.5" r="6"/><circle cx="35" cy="12" r="6"/><circle cx="65" cy="12" r="6"/></g><g transform="rotate(90 50 50)"><circle cx="50" cy="6.5" r="6"/><circle cx="35" cy="12" r="6"/><circle cx="65" cy="12" r="6"/></g><g transform="rotate(180 50 50)"><circle cx="50" cy="6.5" r="6"/><circle cx="35" cy="12" r="6"/><circle cx="65" cy="12" r="6"/></g><g transform="rotate(270 50 50)"><circle cx="50" cy="6.5" r="6"/><circle cx="35" cy="12" r="6"/><circle cx="65" cy="12" r="6"/></g></svg>
+        <div class="marque-txt">
+          <h1>Désherbage</h1>
+          <select id="secteur" aria-label="Secteur"></select>
+        </div>
+      </div>
       <span id="meteoPill" class="pill" role="button" tabindex="0" title="Actualiser la météo">Météo…</span>
     </div>
     <nav class="tabs" role="tablist">
