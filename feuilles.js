@@ -6,12 +6,13 @@
 'use strict';
 
 const Feuilles = (() => {
-  state.feuilles = Object.assign({ rues: null, seuil: 500, stop: {} }, state.feuilles || {});
+  state.feuilles = Object.assign({ rues: null, seuil: 500, stop: {}, mode: 'simple' }, state.feuilles || {});
   if (!state.feuilles.stop) state.feuilles.stop = {};
   const N = s => Dictee.norm(s);
 
   const ruesDefaut = () => secteur()?.ruesFeuilles || [];
   const rues = () => state.feuilles.rues || ruesDefaut();
+  const modeSimple = () => state.feuilles.mode !== 'complet';
   const estRue = id => rues().includes(id);
   function basculer(id, oui) {
     const l = new Set(rues());
@@ -123,7 +124,7 @@ const Feuilles = (() => {
   }
 
   function invalider2() { cache.clear(); }
-  return { rues, estRue, previsions, basculer, stoppee, stopper, reprise, dernier, indice, niveau, statut, semaine, invalider: invalider2, estRamassage };
+  return { rues, estRue, modeSimple, previsions, basculer, stoppee, stopper, reprise, dernier, indice, niveau, statut, semaine, invalider: invalider2, estRamassage };
 })();
 
 /* ================= Interface ================= */
@@ -151,7 +152,7 @@ const Feuilles = (() => {
       <div>Prévoir coordonné ou pompage</div><div class="small">${nomsGroupes(p.maintenant).map(esc).join(', ')}</div></div>`;
     h += p.semaines.map(s => `<div class="fprev c-${s.classe}"><div class="fp-tete"><b>Semaine du ${fmtJour(s.lundi)} au ${fmtJour(s.vendredi)}</b><span class="fp-delai">${delaiTexte(s.delta)}</span></div>
       <div>Prévoir coordonné ou pompage</div><div class="small">${nomsGroupes(s.ids).map(esc).join(', ')}</div>
-      <div class="muted small">Estimation · fiabilité : ${s.confiance}</div>
+      ${Feuilles.modeSimple() ? '' : `<div class="muted small">Estimation · fiabilité : ${s.confiance}</div>`}
       <button class="btn" type="button" data-ics="${s.lundi}" style="margin-top:8px">Ajouter à mon agenda (rappel 3 jours avant)</button></div>`).join('');
     if (!p.maintenant.length && !p.semaines.length) h += '<p class="muted small" style="margin:0 0 8px">Rien à prévoir sur les 15 prochains jours (estimation).</p>';
     return h;
@@ -191,6 +192,13 @@ const Feuilles = (() => {
     toast('Fichier agenda créé : ouvre-le pour l\'ajouter à ton agenda.');
   });
 
+  // réglage « Affichage des feuilles » (Réglages) : simple par défaut
+  document.getElementById('view').addEventListener('click', e => {
+    const b = e.target.closest('[data-fmode]'); if (!b) return;
+    state.feuilles.mode = b.dataset.fmode; persist(); rendre();
+    toast(state.feuilles.mode === 'simple' ? 'Affichage des feuilles : simple.' : 'Affichage des feuilles : complet.');
+  });
+
   window.blocFeuilles = function () {
     Feuilles.invalider();
     const ids = Feuilles.rues(); if (!ids.length) return '';
@@ -204,9 +212,9 @@ const Feuilles = (() => {
     }).join('');
     const sec = sem.some(j => j.seche);
     let h = `<h2>Feuilles mortes <span class="muted">(${ids.length} rue${ids.length > 1 ? 's' : ''} avec arbres)</span></h2>
-      <div class="fsem">${bande}</div>
+      ${Feuilles.modeSimple() ? '' : `<div class="fsem">${bande}</div>`}
       ${sec ? '<div class="notice" style="margin:8px 0"><strong>Été sec</strong> : quelques feuilles peuvent tomber avec la sécheresse et le vent. Rien d\'alarmant (estimation).</div>' : ''}
-      <p class="muted small" style="margin:4px 0 8px">Chute estimée par jour travaillé : · faible, + moyenne, ++ forte, +++ très forte.</p>`;
+      ${Feuilles.modeSimple() ? '' : '<p class="muted small" style="margin:4px 0 8px">Chute estimée par jour travaillé : · faible, + moyenne, ++ forte, +++ très forte.</p>'}`;
     // alerte avaloirs : forte pluie à venir alors que des feuilles se sont accumulées
     const today = aujourdhui();
     const pluie = [0, 1, 2, 3].map(k => addJours(today, k)).find(d => { const j = meteo.jours[d]; return j && (d === today || j.prev) && (j.pluie || 0) >= 10; });
