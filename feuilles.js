@@ -81,8 +81,34 @@ const Feuilles = (() => {
     return l;
   }
 
+  // prévision sur 15 jours, regroupée par semaine de travail (lundi → vendredi)
+  function previsions() {
+    const today = aujourdhui(), sem = new Map(), maintenant = [];
+    rues().forEach(id => {
+      if (stoppee(id)) return;
+      const s = statut(id);
+      if (s.etat === 'afaire') { maintenant.push(id); return; }
+      if (!s.echeance || ecartJours(today, s.echeance) > 15) return;
+      let d = s.echeance, w = new Date(toUTC(d)).getUTCDay();
+      if (w === 6) d = addJours(d, -1); else if (w === 0) d = addJours(d, -2); // week-end : on agit avant, le vendredi
+      if (d < today) d = today;
+      w = new Date(toUTC(d)).getUTCDay();
+      const lundi = addJours(d, -((w + 6) % 7));
+      const g = sem.get(lundi) || { lundi, vendredi: addJours(lundi, 4), premier: d, ids: [] };
+      if (d < g.premier) g.premier = d;
+      g.ids.push(id); sem.set(lundi, g);
+    });
+    const classe = delta => delta <= 0 ? 'rouge' : delta <= 3 ? 'orange' : delta <= 10 ? 'jaune' : 'bleu';
+    const confiance = delta => delta <= 5 ? 'assez fiable' : delta <= 10 ? 'probable' : 'à confirmer';
+    const semaines = [...sem.values()].sort((a, b) => a.lundi < b.lundi ? -1 : 1).map(g => {
+      const delta = ecartJours(today, g.premier);
+      return { ...g, delta, classe: classe(delta), confiance: confiance(delta) };
+    });
+    return { maintenant, semaines };
+  }
+
   function invalider2() { cache.clear(); }
-  return { rues, estRue, basculer, stoppee, stopper, reprise, dernier, indice, niveau, statut, semaine, invalider: invalider2, estRamassage };
+  return { rues, estRue, previsions, basculer, stoppee, stopper, reprise, dernier, indice, niveau, statut, semaine, invalider: invalider2, estRamassage };
 })();
 
 /* ================= Interface ================= */
@@ -92,6 +118,28 @@ const Feuilles = (() => {
   if (typeof inv0 === 'function') window.invalider = function () { Feuilles.invalider(); return inv0.apply(this, arguments); };
 
   const nomR = id => { const r = rueParId(id); return r ? r.voie + (r.troncon ? ` (${r.troncon})` : '') : '?'; };
+
+  // rues d'une même zone (ex. La Vache) regroupées sous le nom du quartier
+  function nomsGroupes(ids) {
+    const reste = new Set(ids), out = [];
+    (secteur()?.zones || []).forEach(z => {
+      const dedans = (z.rues || []).filter(id => reste.has(id));
+      if (dedans.length >= 2) { out.push(`${z.nom} (${dedans.length} rues)`); dedans.forEach(id => reste.delete(id)); }
+    });
+    return [...out, ...[...reste].map(nomR)];
+  }
+  const delaiTexte = n => n <= 0 ? "aujourd'hui" : n === 1 ? 'demain' : `dans ${n} jours`;
+  function blocPrevision() {
+    const p = Feuilles.previsions();
+    let h = `<h3 class="fp-titre">Prévision sur 15 jours <span class="fp-est">estimation</span></h3>`;
+    if (p.maintenant.length) h += `<div class="fprev c-rouge"><div class="fp-tete"><b>À ramasser maintenant</b><span class="fp-delai">aujourd'hui</span></div>
+      <div>Prévoir coordonné ou pompage</div><div class="small">${nomsGroupes(p.maintenant).map(esc).join(', ')}</div></div>`;
+    h += p.semaines.map(s => `<div class="fprev c-${s.classe}"><div class="fp-tete"><b>Semaine du ${fmtJour(s.lundi)} au ${fmtJour(s.vendredi)}</b><span class="fp-delai">${delaiTexte(s.delta)}</span></div>
+      <div>Prévoir coordonné ou pompage</div><div class="small">${nomsGroupes(s.ids).map(esc).join(', ')}</div>
+      <div class="muted small">Estimation · fiabilité : ${s.confiance}</div></div>`).join('');
+    if (!p.maintenant.length && !p.semaines.length) h += '<p class="muted small" style="margin:0 0 8px">Rien à prévoir sur les 15 prochains jours (estimation).</p>';
+    return h;
+  }
 
   window.blocFeuilles = function () {
     Feuilles.invalider();
@@ -111,6 +159,7 @@ const Feuilles = (() => {
     const pluie = [0, 1, 2, 3].map(k => addJours(today, k)).find(d => { const j = meteo.jours[d]; return j && (d === today || j.prev) && (j.pluie || 0) >= 10; });
     const chargees = rows.filter(r => r.s.pct >= 0.7);
     if (pluie && chargees.length) h += `<div class="notice warn"><strong>Risque d'avaloirs bouchés</strong> : forte pluie prévue le ${fmtJour(pluie)} (${virgule(meteo.jours[pluie].pluie)} mm) alors que des feuilles se sont accumulées sur ${chargees.map(r => esc(nomR(r.id))).join(', ')}. Un ramassage avant la pluie limite le risque.</div>`;
+    h += blocPrevision();
     h += `<div class="list">${rows.map(({ id, s }) => {
       const droite = s.etat === 'stop' ? '<span class="muted small">Plus de feuilles</span>' : s.etat === 'afaire' ? '<span class="tag">À ramasser</span>' : s.echeance ? `<span class="n"${s.etat === 'bientot' ? ' style="font-weight:700"' : ''}>${ecartJours(today, s.echeance) <= 15 ? fmtJour(s.echeance) : fmtDateCourt(s.echeance)}</span>` : '—';
       return `<div class="rue" data-rue="${id}" role="button" tabindex="0"><div class="main"><div class="nom">${esc(nomR(id))}</div>

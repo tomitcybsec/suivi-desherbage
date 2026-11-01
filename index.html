@@ -175,6 +175,23 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 .dict-ambi{border:2px dashed var(--muted);padding:8px;margin-bottom:8px}
 .dict-ambi p{margin:0 0 6px;font-size:14px;font-weight:700}
 .dict-non{font-size:14px;color:var(--retard);font-weight:700}
+
+/* Feuilles mortes : bande de 7 jours et prévision par semaine */
+:root{--pc-bleu:#3b6a99; --pc-bleu-ink:#fff; --pc-jaune:#f2c200; --pc-jaune-ink:#1c1c1c; --pc-orange:#c25a00; --pc-orange-ink:#fff}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--pc-bleu:#7fa6cf; --pc-bleu-ink:#111; --pc-orange:#ff9442; --pc-orange-ink:#111}}
+:root[data-theme="dark"]{--pc-bleu:#7fa6cf; --pc-bleu-ink:#111; --pc-orange:#ff9442; --pc-orange-ink:#111}
+.fsem{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.fj{background:var(--surface);border:1px solid var(--line);padding:6px 2px;text-align:center;font-size:12px}
+.fj b{display:block;font-size:16px}
+.fj i{display:block;font-style:normal;font-size:10px;color:var(--muted)}
+.fj.moyenne{border-color:var(--pc-jaune)}.fj.forte{background:var(--pc-orange);color:var(--pc-orange-ink)}.fj.forte i{color:inherit}
+.fj.tres-forte{background:var(--retard);color:var(--retard-ink)}.fj.tres-forte i{color:inherit}
+.fp-titre{font-size:15px;margin:14px 0 6px}
+.fp-est{font-size:11px;font-weight:700;border:1px solid var(--text);padding:1px 6px;margin-left:6px;text-transform:uppercase}
+.fprev{--pc:var(--pc-bleu);--pci:var(--pc-bleu-ink);background:var(--surface);border:1px solid var(--line);border-left:8px solid var(--pc);padding:10px 12px;margin-bottom:8px}
+.fprev.c-jaune{--pc:var(--pc-jaune);--pci:var(--pc-jaune-ink)}.fprev.c-orange{--pc:var(--pc-orange);--pci:var(--pc-orange-ink)}.fprev.c-rouge{--pc:var(--retard);--pci:var(--retard-ink)}
+.fp-tete{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:4px}
+.fp-delai{background:var(--pc);color:var(--pci);font-weight:700;font-size:13px;padding:2px 8px;white-space:nowrap}
 </style>
 </head>
 <body>
