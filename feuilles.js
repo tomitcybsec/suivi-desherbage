@@ -56,7 +56,18 @@ const Feuilles = (() => {
     for (let k = 0; k < 4; k++) if (jourMeteo(addJours(d, -k)).tmin <= 1) gel = true;
     if (gel) x *= 1.5;                      // une gelée fait tomber beaucoup de feuilles les jours suivants
     if (j.vent != null) { if (j.vent >= 60) x *= 1.7; else if (j.vent >= 40) x *= 1.4; }
-    const r = { x, gel, vent: j.vent != null && j.vent >= 40 ? j.vent : null, source: j.source };
+    // été sec (1er août → 30 septembre) : quelques feuilles tombent avec la sécheresse et le vent, niveau faible
+    let seche = false;
+    const m = +d.slice(5, 7);
+    if (m === 8 || m === 9) {
+      let pluie30 = 0;
+      for (let k = 0; k < 30; k++) pluie30 += jourMeteo(addJours(d, -k)).pluie || 0;
+      if (pluie30 < 30 && j.tmax >= 25) {
+        seche = true;
+        x = Math.max(x, (6 + 9 * (1 - pluie30 / 30)) * (j.vent != null && j.vent >= 40 ? 1.4 : 1)); // 6 à 21 : reste « faible »
+      }
+    }
+    const r = { x, gel, seche, vent: j.vent != null && j.vent >= 40 ? j.vent : null, source: j.source };
     cache.set(d, r);
     return r;
   }
@@ -191,8 +202,10 @@ const Feuilles = (() => {
       const vent = j.vent ? `<i class="vent">vent ${Math.round(j.vent)}</i>` : '';
       return `<div class="fj ${cl}"><span>${JOURS_COURTS[new Date(toUTC(j.d)).getUTCDay()]} ${+j.d.slice(8)}</span><b>${n === 'très forte' ? '+++' : n === 'forte' ? '++' : n === 'moyenne' ? '+' : '·'}</b>${j.gel ? '<i class="gel">GEL</i>' : ''}${vent}</div>`;
     }).join('');
+    const sec = sem.some(j => j.seche);
     let h = `<h2>Feuilles mortes <span class="muted">(${ids.length} rue${ids.length > 1 ? 's' : ''} avec arbres)</span></h2>
       <div class="fsem">${bande}</div>
+      ${sec ? '<div class="notice" style="margin:8px 0"><strong>Été sec</strong> : quelques feuilles peuvent tomber avec la sécheresse et le vent. Rien d\'alarmant (estimation).</div>' : ''}
       <p class="muted small" style="margin:4px 0 8px">Chute estimée par jour travaillé : · faible, + moyenne, ++ forte, +++ très forte.</p>`;
     // alerte avaloirs : forte pluie à venir alors que des feuilles se sont accumulées
     const today = aujourdhui();
