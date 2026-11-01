@@ -1,4 +1,4 @@
-# Suivi désherbage
+# Helping Hand (anciennement « Suivi désherbage »)
 
 Application web (installable sur PC et téléphone) pour :
 
