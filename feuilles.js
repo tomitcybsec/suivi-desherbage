@@ -6,7 +6,8 @@
 'use strict';
 
 const Feuilles = (() => {
-  state.feuilles = Object.assign({ rues: null, seuil: 500 }, state.feuilles || {});
+  state.feuilles = Object.assign({ rues: null, seuil: 500, stop: {} }, state.feuilles || {});
+  if (!state.feuilles.stop) state.feuilles.stop = {};
   const N = s => Dictee.norm(s);
 
   const ruesDefaut = () => secteur()?.ruesFeuilles || [];
@@ -16,6 +17,14 @@ const Feuilles = (() => {
     const l = new Set(rues());
     oui ? l.add(id) : l.delete(id);
     state.feuilles.rues = [...l];
+    persist(); invalider();
+  }
+
+  // « Plus de feuilles sur les arbres » : le suivi de la rue est coupé jusqu'au 1er août suivant, puis repart tout seul
+  const reprise = d => { const a = +d.slice(0, 4), m = +d.slice(5, 7); return `${m >= 8 ? a + 1 : a}-08-01`; };
+  const stoppee = id => { const d = state.feuilles.stop[id]; return !!d && aujourdhui() < reprise(d); };
+  function stopper(id, oui) {
+    if (oui) state.feuilles.stop[id] = aujourdhui(); else delete state.feuilles.stop[id];
     persist(); invalider();
   }
 
@@ -56,6 +65,7 @@ const Feuilles = (() => {
   function statut(rueId) {
     const today = aujourdhui(), seuil = state.feuilles.seuil;
     const der = dernier(rueId);
+    if (stoppee(rueId)) return { dernier: der, cumul: 0, pct: 0, echeance: null, etat: 'stop', reprise: reprise(state.feuilles.stop[rueId]) };
     const depart = der || addJours(today, -21); // sans ramassage connu : on compte 3 semaines
     let cumul = 0;
     for (let d = addJours(depart, 1); d <= today; d = addJours(d, 1)) cumul += indice(d).x;
@@ -72,7 +82,7 @@ const Feuilles = (() => {
   }
 
   function invalider2() { cache.clear(); }
-  return { rues, estRue, basculer, dernier, indice, niveau, statut, semaine, invalider: invalider2, estRamassage };
+  return { rues, estRue, basculer, stoppee, stopper, reprise, dernier, indice, niveau, statut, semaine, invalider: invalider2, estRamassage };
 })();
 
 /* ================= Interface ================= */
@@ -102,9 +112,9 @@ const Feuilles = (() => {
     const chargees = rows.filter(r => r.s.pct >= 0.7);
     if (pluie && chargees.length) h += `<div class="notice warn"><strong>Risque d'avaloirs bouchés</strong> : forte pluie prévue le ${fmtJour(pluie)} (${virgule(meteo.jours[pluie].pluie)} mm) alors que des feuilles se sont accumulées sur ${chargees.map(r => esc(nomR(r.id))).join(', ')}. Un ramassage avant la pluie limite le risque.</div>`;
     h += `<div class="list">${rows.map(({ id, s }) => {
-      const droite = s.etat === 'afaire' ? '<span class="tag">À ramasser</span>' : s.echeance ? `<span class="n"${s.etat === 'bientot' ? ' style="font-weight:700"' : ''}>${ecartJours(today, s.echeance) <= 15 ? fmtJour(s.echeance) : fmtDateCourt(s.echeance)}</span>` : '—';
+      const droite = s.etat === 'stop' ? '<span class="muted small">Plus de feuilles</span>' : s.etat === 'afaire' ? '<span class="tag">À ramasser</span>' : s.echeance ? `<span class="n"${s.etat === 'bientot' ? ' style="font-weight:700"' : ''}>${ecartJours(today, s.echeance) <= 15 ? fmtJour(s.echeance) : fmtDateCourt(s.echeance)}</span>` : '—';
       return `<div class="rue" data-rue="${id}" role="button" tabindex="0"><div class="main"><div class="nom">${esc(nomR(id))}</div>
-        <div class="meta">${s.dernier ? `dernier ramassage le ${fmtJM(s.dernier)}` : 'aucun ramassage connu'} · ${Math.round(s.pct * 100)} %</div></div>
+        <div class="meta">${s.etat === 'stop' ? `suivi coupé · reprise le ${fmtJour(s.reprise)}` : ''}${s.etat === 'stop' ? '' : s.dernier ? `dernier ramassage le ${fmtJM(s.dernier)}` : 'aucun ramassage connu'} · ${Math.round(s.pct * 100)} %</div></div>
         <div class="right">${droite}</div></div>`;
     }).join('')}</div>`;
     return h;
@@ -115,13 +125,26 @@ const Feuilles = (() => {
     const oui = Feuilles.estRue(id);
     let h = `<h3 style="font-size:15px;margin:14px 0 6px">Feuilles mortes</h3>
       <label class="dict-item" style="cursor:pointer"><input type="checkbox" data-feuilles="${id}" ${oui ? 'checked' : ''}><span class="grow">Rue avec arbres (suivi des feuilles)</span></label>`;
-    if (oui) {
+    if (oui && Feuilles.stoppee(id)) {
+      h += `<p class="small" style="margin:6px 0 0"><strong>Plus de feuilles sur les arbres.</strong> Suivi coupé, il reprend tout seul le ${fmtJour(Feuilles.reprise(state.feuilles.stop[id]))}.</p>
+        <button class="btn" type="button" data-feuilles-stop="${id}" data-oui="0" style="margin-top:6px">Reprendre le suivi maintenant</button>`;
+    } else if (oui) {
       const s = Feuilles.statut(id);
       h += `<p class="small" style="margin:6px 0 0">${s.dernier ? `Dernier ramassage : ${fmtDate(s.dernier)}` : 'Aucun ramassage connu (compté sur 3 semaines)'} · feuilles accumulées : <strong>${Math.round(s.pct * 100)} %</strong>
-        ${s.etat === 'afaire' ? ' — <strong>à ramasser</strong>' : s.echeance ? ` — prochain ramassage conseillé le ${fmtJour(s.echeance)}` : ''}</p>`;
+        ${s.etat === 'afaire' ? ' — <strong>à ramasser</strong>' : s.echeance ? ` — prochain ramassage conseillé le ${fmtJour(s.echeance)}` : ''}</p>
+        <button class="btn" type="button" data-feuilles-stop="${id}" data-oui="1" style="margin-top:6px">Plus de feuilles sur les arbres</button>`;
     }
     return h;
   };
+
+  document.getElementById('drBody').addEventListener('click', e => {
+    const b = e.target.closest('[data-feuilles-stop]'); if (!b) return;
+    const oui = b.dataset.oui === '1', id = b.dataset.feuillesStop;
+    Feuilles.stopper(id, oui);
+    toast(oui ? `Suivi des feuilles coupé jusqu'au ${fmtJour(Feuilles.reprise(state.feuilles.stop[id]))}.` : 'Suivi des feuilles repris.');
+    rendre();
+    if (typeof ouvrirRue === 'function') ouvrirRue(id);
+  });
 
   document.getElementById('drBody').addEventListener('change', e => {
     const c = e.target.closest('[data-feuilles]'); if (!c) return;
