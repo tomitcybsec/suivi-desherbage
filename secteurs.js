@@ -2,7 +2,9 @@
    Pour ajouter un secteur : copier le bloc du secteur 3, changer id / nom / lat / lon, et remplacer la liste des rues.
    Les id de rues ne doivent jamais changer une fois des passages saisis.
    alias : noms d'usage qui désignent une voie du référentiel (ex. « les Mazades »).
-   zones : lieux sans voie dans le référentiel (quartier, parking) : suivis mais sans prédiction. */
+   zones : lieux sans voie dans le référentiel (quartier, parking) : suivis mais sans prédiction.
+          Une zone peut avoir « rues » (ids) : choisir la zone saisit toutes ces rues d'un coup ; « exclure » : expressions à ignorer.
+   ruesFeuilles : rues avec arbres, suivies pour les feuilles mortes. */
 window.SECTEURS = [
  {
   "id": "pn-s3",
@@ -14,8 +16,9 @@ window.SECTEURS = [
   "alias": [
    { "motifs": ["quartier des mazades", "les mazades", "secteur des mazades"], "voie": "Avenue des Mazades" }
   ],
+  "ruesFeuilles": ["s3-030", "s3-101", "s3-103", "s3-073", "s3-049", "s3-107", "s3-104", "s3-093", "s3-029", "s3-019", "s3-042", "s3-041"],
   "zones": [
-   { "nom": "La Vache", "motifs": ["vache"] },
+   { "nom": "La Vache", "motifs": ["vache"], "exclure": ["pont de la vache"], "rues": ["s3-107", "s3-104", "s3-093", "s3-029", "s3-019", "s3-042", "s3-041"] },
    { "nom": "Parking de la Glanerie", "motifs": ["glanerie"] }
   ],
   "rues": [
