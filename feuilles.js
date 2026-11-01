@@ -140,7 +140,8 @@ const Feuilles = (() => {
       <div>Prévoir coordonné ou pompage</div><div class="small">${nomsGroupes(p.maintenant).map(esc).join(', ')}</div></div>`;
     h += p.semaines.map(s => `<div class="fprev c-${s.classe}"><div class="fp-tete"><b>Semaine du ${fmtJour(s.lundi)} au ${fmtJour(s.vendredi)}</b><span class="fp-delai">${delaiTexte(s.delta)}</span></div>
       <div>Prévoir coordonné ou pompage</div><div class="small">${nomsGroupes(s.ids).map(esc).join(', ')}</div>
-      <div class="muted small">Estimation · fiabilité : ${s.confiance}</div></div>`).join('');
+      <div class="muted small">Estimation · fiabilité : ${s.confiance}</div>
+      <button class="btn" type="button" data-ics="${s.lundi}" style="margin-top:8px">Ajouter à mon agenda (rappel 3 jours avant)</button></div>`).join('');
     if (!p.maintenant.length && !p.semaines.length) h += '<p class="muted small" style="margin:0 0 8px">Rien à prévoir sur les 15 prochains jours (estimation).</p>';
     return h;
   }
@@ -158,6 +159,25 @@ const Feuilles = (() => {
     if (!e.target.closest('[data-feuilles-voir]')) return;
     ui.suiviVue = 'feuilles';
     const b = document.querySelector('nav.tabs [data-tab="historique"]'); if (b) b.click(); else rendre();
+  });
+
+  // « Ajouter à mon agenda » : fichier .ics (l'agenda du téléphone l'ouvre), rappel 3 jours avant
+  const icsTxt = t => String(t).replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+  document.getElementById('view').addEventListener('click', e => {
+    const b = e.target.closest('[data-ics]'); if (!b) return;
+    const s = Feuilles.previsions().semaines.find(x => x.lundi === b.dataset.ics); if (!s) return;
+    const ymd = d => d.replace(/-/g, '');
+    const titre = 'Feuilles : prévoir coordonné ou pompage (estimation)';
+    const desc = `Semaine du ${fmtJour(s.lundi)} au ${fmtJour(s.vendredi)}. Rues : ${nomsGroupes(s.ids).join(', ')}. Estimation d'après la météo, à confirmer.`;
+    const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Helping Hand//FR', 'CALSCALE:GREGORIAN', 'BEGIN:VEVENT',
+      `UID:feuilles-${s.lundi}-${Date.now()}@helpinghand`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`,
+      `DTSTART;VALUE=DATE:${ymd(s.premier)}`, `DTEND;VALUE=DATE:${ymd(addJours(s.premier, 1))}`,
+      `SUMMARY:${icsTxt(titre)}`, `DESCRIPTION:${icsTxt(desc)}`,
+      'BEGIN:VALARM', 'TRIGGER:-P3D', 'ACTION:DISPLAY', `DESCRIPTION:${icsTxt(titre)}`, 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+    const url = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' }));
+    const a = document.createElement('a'); a.href = url; a.download = `feuilles-${s.premier}.ics`; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    toast('Fichier agenda créé : ouvre-le pour l\'ajouter à ton agenda.');
   });
 
   window.blocFeuilles = function () {
