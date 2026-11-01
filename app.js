@@ -3,7 +3,7 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.9.12';
+const VERSION = '1.9.15';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
 const WX_MAX_AGE_MS = 3 * 3600 * 1000; // on actualise la météo toutes les 3 h au plus
@@ -291,7 +291,7 @@ function ligneRue(rue, { selection = false } = {}) {
   else droite = ecartJours(today, s.echeance) <= 15 ? fmtJour(s.echeance) : fmtDateCourt(s.echeance);
   const coche = selection ? `<input type="checkbox" data-sel="${rue.id}" ${ui.selection.has(rue.id) ? 'checked' : ''} aria-label="Sélectionner ${esc(rue.voie)}">` : '';
   const meta = [`Classe ${rue.classe}`, rue.troncon ? esc(rue.troncon) : null, rue.longueur ? rue.longueur + ' m' : null, s.dernier ? `fait le ${fmtJM(s.dernier.date)}` : null].filter(Boolean).join(' · ');
-  return `<div class="rue" data-rue="${rue.id}" role="button" tabindex="0">
+  return `<div class="rue" data-rue="${rue.id}" data-classe="${rue.classe}" role="button" tabindex="0">
     ${coche}
     <div class="main">
       <div class="nom">${esc(rue.voie)}</div>
@@ -422,7 +422,8 @@ function rendreRues() {
       <button class="btn" id="selAll">Tout cocher (${rues.length})</button>
     </div>
     <p class="muted small" style="margin:-4px 0 10px">Coche plusieurs rues pour saisir un même passage (campagne), ou touche une rue pour voir son détail.</p>
-    <div class="list" id="listeRues">${rues.map(r => ligneRue(r, { selection: true })).join('') || '<div class="empty">Aucune rue ne correspond.</div>'}</div>`;
+    <div class="list" id="listeRues">${rues.map(r => ligneRue(r, { selection: true })).join('') || '<div class="empty">Aucune rue ne correspond.</div>'}</div>
+    <div class="legende" aria-label="Légende des classes"><strong>Liseré = classe pôle</strong>${[5, 4, 3, 2, 1, 0].map(c => `<span><i class="sw${c}"></i>${c}</span>`).join('')}<span>(5 = le plus propre possible, 0 = peut attendre)</span></div>`;
   majSelbar();
 }
 function majSelbar() {
@@ -586,6 +587,15 @@ function historiqueRue(id) {
     (lignes.length ? `<div class="hist-box">${lignes.map(l => l.html).join('')}</div>` : '<p class="muted small">Aucun passage ni intervention.</p>');
 }
 
+/* Boutons « Itinéraire » (Google Maps) et « Waze » : liens simples, sans clé d'API */
+function boutonsItineraire(rue) {
+  const q = encodeURIComponent(`${rue.voie}${rue.troncon ? ` (${rue.troncon})` : ''}, Toulouse, France`);
+  return `<div class="nav-rue">
+    <a class="btn" href="https://www.google.com/maps/dir/?api=1&destination=${q}&travelmode=driving" target="_blank" rel="noopener">Itinéraire</a>
+    <a class="btn" href="https://waze.com/ul?q=${q}&navigate=yes" target="_blank" rel="noopener">Waze</a>
+  </div>`;
+}
+
 /* ---------- Détail d'une rue ---------- */
 let rueOuverte = null;
 function ouvrirRue(id) {
@@ -593,7 +603,7 @@ function ouvrirRue(id) {
   rueOuverte = id;
   const s = statutRue(rue);
   $('#drTitre').textContent = rue.voie;
-  let html = `<dl class="kv">
+  let html = boutonsItineraire(rue) + `<dl class="kv">
     ${rue.troncon ? `<dt>Tronçon</dt><dd>${esc(rue.troncon)}</dd>` : ''}
     <dt>Longueur</dt><dd>${rue.longueur ? rue.longueur + ' m' : 'non renseignée'}</dd>
     <dt>Classe pôle</dt><dd>${rue.classe}</dd>`;
