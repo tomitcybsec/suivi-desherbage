@@ -77,7 +77,11 @@ const Feuilles = (() => {
 
   function semaine() {
     const today = aujourdhui(), l = [];
-    for (let k = 0; k < 7; k++) { const d = addJours(today, k); l.push({ d, ...indice(d) }); }
+    // 10 prochains jours travaillés (lundi → vendredi) : le week-end n'est pas affiché
+    for (let k = 0; l.length < 10 && k < 20; k++) {
+      const d = addJours(today, k), w = new Date(toUTC(d)).getUTCDay();
+      if (w !== 0 && w !== 6) l.push({ d, ...indice(d) });
+    }
     return l;
   }
 
@@ -165,11 +169,11 @@ const Feuilles = (() => {
       const n = Feuilles.niveau(j.x);
       const cl = n === 'très forte' ? 'tres-forte' : n;
       const vent = j.vent ? `<i class="vent">vent ${Math.round(j.vent)}</i>` : '';
-      return `<div class="fj ${cl}"><span>${JOURS_COURTS[new Date(toUTC(j.d)).getUTCDay()]}</span><b>${n === 'très forte' ? '+++' : n === 'forte' ? '++' : n === 'moyenne' ? '+' : '·'}</b>${j.gel ? '<i class="gel">GEL</i>' : ''}${vent}</div>`;
+      return `<div class="fj ${cl}"><span>${JOURS_COURTS[new Date(toUTC(j.d)).getUTCDay()]} ${+j.d.slice(8)}</span><b>${n === 'très forte' ? '+++' : n === 'forte' ? '++' : n === 'moyenne' ? '+' : '·'}</b>${j.gel ? '<i class="gel">GEL</i>' : ''}${vent}</div>`;
     }).join('');
     let h = `<h2>Feuilles mortes <span class="muted">(${ids.length} rue${ids.length > 1 ? 's' : ''} avec arbres)</span></h2>
       <div class="fsem">${bande}</div>
-      <p class="muted small" style="margin:4px 0 8px">Chute estimée jour par jour : · faible, + moyenne, ++ forte, +++ très forte.</p>`;
+      <p class="muted small" style="margin:4px 0 8px">Chute estimée par jour travaillé : · faible, + moyenne, ++ forte, +++ très forte.</p>`;
     // alerte avaloirs : forte pluie à venir alors que des feuilles se sont accumulées
     const today = aujourdhui();
     const pluie = [0, 1, 2, 3].map(k => addJours(today, k)).find(d => { const j = meteo.jours[d]; return j && (d === today || j.prev) && (j.pluie || 0) >= 10; });
