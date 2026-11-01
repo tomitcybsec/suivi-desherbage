@@ -214,10 +214,11 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 :root[data-theme="dark"]{--pc-bleu:#7fa6cf; --pc-bleu-ink:#111; --pc-orange:#ff9442; --pc-orange-ink:#111}
 .fsem{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
 .fj{background:var(--surface);border:1px solid var(--line);padding:6px 2px;text-align:center;font-size:12px}
-.fj b{display:block;font-size:16px}
+.fj b{display:block;font-size:18px;color:var(--muted)}
+.fj.moyenne b{color:var(--text)}.fj.forte b{color:var(--pc-orange)}.fj.tres-forte b{color:var(--retard)}
 .fj i{display:block;font-style:normal;font-size:10px;color:var(--muted)}
-.fj.moyenne{border-color:var(--pc-jaune)}.fj.forte{background:var(--pc-orange);color:var(--pc-orange-ink)}.fj.forte i{color:inherit}
-.fj.tres-forte{background:var(--retard);color:var(--retard-ink)}.fj.tres-forte i{color:inherit}
+.fj i.gel{font-size:14px;font-weight:800;color:var(--pc-bleu);letter-spacing:.5px}
+.fj i.vent{color:var(--text)}
 .fp-titre{font-size:15px;margin:14px 0 6px}
 .fp-est{font-size:11px;font-weight:700;border:1px solid var(--text);padding:1px 6px;margin-left:6px;text-transform:uppercase}
 .fprev{--pc:var(--pc-bleu);--pci:var(--pc-bleu-ink);background:var(--surface);border:1px solid var(--line);border-left:8px solid var(--pc);padding:10px 12px;margin-bottom:8px}

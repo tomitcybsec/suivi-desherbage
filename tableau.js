@@ -258,14 +258,14 @@ if (typeof document !== 'undefined' && document.getElementById('view')) (() => {
   }
 
   window.rendreSuivi = function () {
-    const vues = { planning: 'Planning', recap: 'Récap', journal: 'Journal', passages: 'Herbe' };
+    const vues = { planning: 'Planning', recap: 'Récap', journal: 'Journal', passages: 'Herbe', feuilles: 'Feuilles' };
     const imp = state.importTableau;
     const tete = `<div class="seg">
       ${Object.entries(vues).map(([k, t]) => `<button class="btn${ui.suiviVue === k ? ' primary' : ''}" data-suivi="${k}">${t}</button>`).join('')}
       </div>
       <p class="muted small" style="margin:-4px 0 12px">${imp ? `Tableau « ${esc(imp.fichier)} » importé le ${new Date(imp.le).toLocaleDateString('fr-FR')} à ${new Date(imp.le).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}. ` : ''}<button class="btn" data-act="importTableau">${imp ? 'Réimporter le tableau' : 'Importer mon tableau de suivi'}</button></p>`;
     if (ui.suiviVue === 'passages') { rendreHistorique(); view.insertAdjacentHTML('afterbegin', tete); return; }
-    view.innerHTML = tete + (ui.suiviVue === 'planning' && typeof vuePlanning === 'function' ? vuePlanning() : ui.suiviVue === 'journal' ? vueJournal() : vueRecap());
+    view.innerHTML = tete + (ui.suiviVue === 'planning' && typeof vuePlanning === 'function' ? vuePlanning() : ui.suiviVue === 'feuilles' && typeof vueFeuilles === 'function' ? vueFeuilles() : ui.suiviVue === 'journal' ? vueJournal() : vueRecap());
   };
 
   // interventions du tableau pour une rue (affichées dans sa fiche)

@@ -141,6 +141,21 @@ const Feuilles = (() => {
     return h;
   }
 
+  // Priorités : une seule ligne qui renvoie vers Suivi > Feuilles
+  window.blocFeuillesResume = function () {
+    if (!Feuilles.rues().length) return '';
+    const p = Feuilles.previsions();
+    const n = p.maintenant.length, s = p.semaines[0];
+    const texte = n ? `<strong>${n} rue${n > 1 ? 's' : ''} à ramasser maintenant</strong> (feuilles)` : s ? `Feuilles : prochaine semaine à prévoir, du ${fmtJour(s.lundi)} au ${fmtJour(s.vendredi)}` : 'Feuilles : rien à prévoir sur 15 jours';
+    return `<div class="notice${n ? ' warn' : ''}">${texte} <button class="btn" type="button" data-feuilles-voir style="margin-top:6px">Voir les feuilles</button></div>`;
+  };
+  window.vueFeuilles = function () { return window.blocFeuilles() || '<div class="notice">Aucune rue avec arbres. Ouvre la fiche d\'une rue et coche « Rue avec arbres ».</div>'; };
+  document.getElementById('view').addEventListener('click', e => {
+    if (!e.target.closest('[data-feuilles-voir]')) return;
+    ui.suiviVue = 'feuilles';
+    const b = document.querySelector('nav.tabs [data-tab="historique"]'); if (b) b.click(); else rendre();
+  });
+
   window.blocFeuilles = function () {
     Feuilles.invalider();
     const ids = Feuilles.rues(); if (!ids.length) return '';
@@ -148,8 +163,9 @@ const Feuilles = (() => {
     const rows = ids.map(id => ({ id, s: Feuilles.statut(id) })).sort((a, b) => b.s.pct - a.s.pct);
     const bande = sem.map(j => {
       const n = Feuilles.niveau(j.x);
-      const pourquoi = [j.gel ? 'gel' : null, j.vent ? `vent ${Math.round(j.vent)} km/h` : null].filter(Boolean).join(', ');
-      return `<div class="fj ${n === 'très forte' ? 'tres-forte' : n}" title="${esc(pourquoi)}"><span>${JOURS_COURTS[new Date(toUTC(j.d)).getUTCDay()]}</span><b>${n === 'très forte' ? '+++' : n === 'forte' ? '++' : n === 'moyenne' ? '+' : '·'}</b>${pourquoi ? `<i>${esc(pourquoi)}</i>` : ''}</div>`;
+      const cl = n === 'très forte' ? 'tres-forte' : n;
+      const vent = j.vent ? `<i class="vent">vent ${Math.round(j.vent)}</i>` : '';
+      return `<div class="fj ${cl}"><span>${JOURS_COURTS[new Date(toUTC(j.d)).getUTCDay()]}</span><b>${n === 'très forte' ? '+++' : n === 'forte' ? '++' : n === 'moyenne' ? '+' : '·'}</b>${j.gel ? '<i class="gel">GEL</i>' : ''}${vent}</div>`;
     }).join('');
     let h = `<h2>Feuilles mortes <span class="muted">(${ids.length} rue${ids.length > 1 ? 's' : ''} avec arbres)</span></h2>
       <div class="fsem">${bande}</div>
