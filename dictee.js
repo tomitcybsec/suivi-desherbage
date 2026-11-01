@@ -226,7 +226,9 @@ const Dictee = (() => {
   function analyser(texte, rues, today, opts = {}) {
     const idx = indexer(rues);
     const n0 = ' ' + norm(texte) + ' ';
-    const zones = (opts.zones || []).filter(z => z.motifs.some(m => n0.includes(norm(m)))).map(z => z.nom);
+    const n1 = (opts.zones || []).reduce((t, z) => (z.exclure || []).reduce((u, x) => u.split(norm(x)).join(' '), t), n0);
+    const zonesTrouvees = (opts.zones || []).filter(z => z.motifs.some(m => n1.includes(norm(m))));
+    const zones = zonesTrouvees.map(z => z.nom);
     for (const a of opts.alias || []) if (a.motifs.some(m => n0.includes(' ' + norm(m) + ' '))) texte += ', ' + a.voie;
     const surs = new Map(), ambigus = [], nonTrouves = [];
     const motsIgnores = new Set(['aujourd', 'hui', 'hier', 'avant', 'ce', 'matin', 'soir', 'apres', 'midi', 'equipe', 'on', 'a', 'fait', 'faits', 'passage', 'passe',
@@ -255,6 +257,8 @@ const Dictee = (() => {
         else ambigus.push(g.top.map(h => h.e.rue));
       }
     }
+    // une zone qui a des rues (ex. La Vache) : toutes ses rues sont ajoutées d'un coup
+    zonesTrouvees.forEach(z => (z.rues || []).forEach(id => { const r = rues.find(x => x.id === id); if (r) surs.set(id, r); }));
     // une ambiguïté déjà résolue ailleurs dans la phrase est retirée
     const amb = ambigus.filter(l => !l.some(r => surs.has(r.id)));
     return { rues: [...surs.values()], ambigus: amb, nonTrouves, zones, date: lireDate(texte, today, opts.sens || 'passe'), etat: lireEtat(texte), equipe: lireEquipe(texte) };

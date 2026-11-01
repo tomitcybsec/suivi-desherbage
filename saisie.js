@@ -69,6 +69,12 @@
       .filter(x => ['retard', 'semaine', 'quinzaine'].includes(x.s.statut)).sort((a, b) => b.s.pct - a.s.pct).slice(0, 6).map(x => x.r);
   }
 
+  // zones qui ont des rues (ex. La Vache) : un bouton ajoute toutes leurs rues d'un coup
+  function zonesSugg() {
+    const q = Dictee.norm(f.q);
+    return (secteur()?.zones || []).filter(z => (z.rues || []).some(id => !f.rues.includes(id)) && (!q || Dictee.norm(z.nom + ' ' + z.motifs.join(' ')).includes(q)));
+  }
+
   function rendreForm() {
     const fait = f.mode === 'fait';
     const herbe = f.inter.has('rotofil');
@@ -91,6 +97,7 @@
       <h4 class="sx">Où <span class="muted">(${f.rues.length})</span></h4>
       ${f.rues.length ? `<div class="chips">${f.rues.map(id => `<button type="button" class="chipbtn on" data-rmrue="${id}">${esc(nomR(id))} ×</button>`).join('')}</div>` : ''}
       <input type="search" id="sxQ" placeholder="Ajouter une rue : tape 2 ou 3 lettres…" value="${esc(f.q)}" autocomplete="off" style="width:100%;margin-top:6px">
+      ${zonesSugg().length ? `<div class="sx-sugg">${zonesSugg().map(z => `<button type="button" class="sx-rue" data-addzone="${esc(z.nom)}"><strong>${esc(z.nom)}</strong> <span class="muted small">(${z.rues.length} rues d'un coup)</span></button>`).join('')}</div>` : ''}
       ${sugg.length ? `<div class="sx-sugg">${!f.q ? '<div class="muted small">À faire en priorité :</div>' : ''}${sugg.map(r => `<button type="button" class="sx-rue" data-addrue="${r.id}"><strong>${esc(r.voie)}</strong>${r.troncon ? ` <span class="muted small">${esc(r.troncon)}</span>` : ''}<span class="muted small"> · classe ${r.classe}</span></button>`).join('')}</div>` : (f.q ? '<p class="muted small">Aucune rue trouvée.</p>' : '')}
 
       <h4 class="sx">Qui</h4>
@@ -125,6 +132,7 @@
     if (t.dataset.date) { f.date = t.dataset.date; redessiner(); return; }
     if (t.dataset.inter) { const k = t.dataset.inter; f.inter.has(k) ? f.inter.delete(k) : f.inter.add(k); redessiner(); return; }
     if (t.dataset.addrue) { if (!f.rues.includes(t.dataset.addrue)) f.rues.push(t.dataset.addrue); f.q = ''; redessiner(); return; }
+    if (t.dataset.addzone) { const z = (secteur()?.zones || []).find(x => x.nom === t.dataset.addzone); (z?.rues || []).forEach(id => { if (!f.rues.includes(id)) f.rues.push(id); }); f.q = ''; redessiner(); return; }
     if (t.dataset.rmrue) { f.rues = f.rues.filter(id => id !== t.dataset.rmrue); redessiner(); return; }
     if (t.dataset.agent) {
       const n = t.dataset.agent;
