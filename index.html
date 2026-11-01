@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Suivi désherbage</title>
-<meta name="description" content="Suivi des passages de désherbage par rue et prévision de repousse selon la météo.">
+<title>Helping Hand</title>
+<meta name="description" content="Helping Hand : prévoir, organiser et suivre le travail de terrain (désherbage, feuilles mortes) selon la météo.">
 <meta name="theme-color" content="#6b3fa0">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -212,12 +212,13 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 :root{--pc-bleu:#3b6a99; --pc-bleu-ink:#fff; --pc-jaune:#f2c200; --pc-jaune-ink:#1c1c1c; --pc-orange:#c25a00; --pc-orange-ink:#fff}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--pc-bleu:#7fa6cf; --pc-bleu-ink:#111; --pc-orange:#ff9442; --pc-orange-ink:#111}}
 :root[data-theme="dark"]{--pc-bleu:#7fa6cf; --pc-bleu-ink:#111; --pc-orange:#ff9442; --pc-orange-ink:#111}
-.fsem{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.fsem{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
 .fj{background:var(--surface);border:1px solid var(--line);padding:6px 2px;text-align:center;font-size:12px}
-.fj b{display:block;font-size:16px}
+.fj b{display:block;font-size:18px;color:var(--muted)}
+.fj.moyenne b{color:var(--text)}.fj.forte b{color:var(--pc-orange)}.fj.tres-forte b{color:var(--retard)}
 .fj i{display:block;font-style:normal;font-size:10px;color:var(--muted)}
-.fj.moyenne{border-color:var(--pc-jaune)}.fj.forte{background:var(--pc-orange);color:var(--pc-orange-ink)}.fj.forte i{color:inherit}
-.fj.tres-forte{background:var(--retard);color:var(--retard-ink)}.fj.tres-forte i{color:inherit}
+.fj i.gel{font-size:14px;font-weight:800;color:var(--pc-bleu);letter-spacing:.5px}
+.fj i.vent{color:var(--text)}
 .fp-titre{font-size:15px;margin:14px 0 6px}
 .fp-est{font-size:11px;font-weight:700;border:1px solid var(--text);padding:1px 6px;margin-left:6px;text-transform:uppercase}
 .fprev{--pc:var(--pc-bleu);--pci:var(--pc-bleu-ink);background:var(--surface);border:1px solid var(--line);border-left:8px solid var(--pc);padding:10px 12px;margin-bottom:8px}
@@ -234,7 +235,7 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
         <!-- croix occitane simplifiée (dessin maison, ce n'est pas un logo officiel) -->
         <svg class="croix" viewBox="0 0 100 100" width="40" height="40" fill="currentColor" aria-hidden="true" focusable="false"><rect x="43" y="14" width="14" height="72"/><rect x="14" y="43" width="72" height="14"/><g><circle cx="50" cy="6.5" r="6"/><circle cx="35" cy="12" r="6"/><circle cx="65" cy="12" r="6"/></g><g transform="rotate(90 50 50)"><circle cx="50" cy="6.5" r="6"/><circle cx="35" cy="12" r="6"/><circle cx="65" cy="12" r="6"/></g><g transform="rotate(180 50 50)"><circle cx="50" cy="6.5" r="6"/><circle cx="35" cy="12" r="6"/><circle cx="65" cy="12" r="6"/></g><g transform="rotate(270 50 50)"><circle cx="50" cy="6.5" r="6"/><circle cx="35" cy="12" r="6"/><circle cx="65" cy="12" r="6"/></g></svg>
         <div class="marque-txt">
-          <h1>Désherbage</h1>
+          <h1>Helping Hand</h1>
           <select id="secteur" aria-label="Secteur"></select>
         </div>
       </div>

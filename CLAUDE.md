@@ -50,5 +50,14 @@ Il n'existe aucune notification aujourd'hui (seulement des alertes visibles dans
 - **Limites techniques** : appli fermée = il faut un serveur d'envoi (clé secrète interdite dans le dépôt, à valider par sa hiérarchie, lié à la « base partagée ») ; iPhone = appli ajoutée à l'écran d'accueil, iOS 16.4 minimum. Options simples : notifications appli ouverte seulement, rappel agenda, e-mail.
 - Reste à décider : téléphone et/ou PC, Android ou iPhone, niveau (appli ouverte ou fermée).
 
+## Idées sous le coude (pas commencées, validées dans le principe)
+- **Trois fonctions** de l'appli : prédire (herbe, feuilles), organiser (planning à 15 jours / 3 semaines : rien d'officiel n'existe pour les agents de maîtrise), suivre et rendre compte.
+- **Sauvegarde / export** + rappel tous les 3 mois (« fais une sauvegarde sur l'ordinateur du travail », avec la date et la période couverte). Envoi au N+1 par le menu de partage d'Android, sans serveur. Les données ne sont que dans le navigateur : sans sauvegarde, tout est perdu si on vide les données ou change de téléphone.
+- **Rapport au N+1** : tableau Excel d'abord ; plus tard un petit PDF de synthèse rédigé tous les 3 mois.
+- **Historique long** (mois, années), consultable par rue.
+- **Mode simple / complet** dans Réglages (simple par défaut), pour des agents de 60 ans peu à l'aise avec le numérique ; textes en phrases, gros boutons, taille du texte réglable. Pour l'instant seulement la partie feuilles a paru compliquée.
+- **Feuilles** : onglet Suivi > Feuilles ; « Plus de feuilles sur les arbres » par rue, reprise le 1er août ; sécheresse d'été et bouton « Ajouter à mon agenda » (rappel 3 jours avant) restent à faire.
+- **Nom de l'appli** : « Helping Hand » (sous-titre possible « Terrain ») ; à changer dans l'appli ; vérifier la disponibilité du nom (Play Store, INPI) avant usage public.
+
 ## Tester
 Ouvrir `index.html` via un petit serveur local (`python3 -m http.server`) ; la météo vient d'Open-Meteo (gratuit, sans clé). Vérifier sur largeur téléphone (390 px) et en mode sombre.

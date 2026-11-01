@@ -1,7 +1,7 @@
 {
-  "name": "Suivi désherbage",
-  "short_name": "Désherbage",
-  "description": "Suivi des passages de désherbage par rue et prévision de repousse selon la météo.",
+  "name": "Helping Hand",
+  "short_name": "Helping Hand",
+  "description": "Prévoir, organiser et suivre le travail de terrain (désherbage, feuilles mortes) selon la météo.",
   "lang": "fr",
   "start_url": "./",
   "scope": "./",
