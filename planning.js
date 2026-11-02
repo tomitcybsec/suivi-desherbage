@@ -209,10 +209,10 @@ const Planning = (() => {
         ${it.statut === 'prevu' ? (al => al ? `<div class="pluie ${al.niveau}">${esc(al.titre)} ${esc(al.detail)}</div>` : '')(alerteMeteo(it.date)) : ''}
         ${actions && it.statut === 'prevu' ? `<div class="actions" style="margin-top:8px">
           <button class="btn primary" data-pl="fait" data-id="${it.id}">Fait</button>
-          <button class="btn" data-pl="modifier" data-id="${it.id}">Modifier</button>
+          <button class="btn modif" data-pl="modifier" data-id="${it.id}">Modifier</button>
           <button class="btn" data-pl="reporter" data-id="${it.id}">Reporter</button>
           <button class="btn danger" data-pl="annuler" data-id="${it.id}">Annuler</button></div>` : ''}
-        ${actions && it.statut !== 'prevu' ? `<div class="actions" style="margin-top:8px">${it.statut === 'realise' ? `<button class="btn" data-pl="modifier" data-id="${it.id}">Modifier</button> ` : ''}<button class="btn" data-pl="rouvrir" data-id="${it.id}">Remettre en « Prévu »</button></div>` : ''}
+        ${actions && it.statut !== 'prevu' ? `<div class="actions" style="margin-top:8px">${it.statut === 'realise' ? `<button class="btn modif" data-pl="modifier" data-id="${it.id}">Modifier</button> ` : ''}<button class="btn" data-pl="rouvrir" data-id="${it.id}">Remettre en « Prévu »</button></div>` : ''}
       </div>
       <div class="right">${etiquette}</div></div>`;
   }
