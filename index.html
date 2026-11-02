@@ -227,6 +227,19 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 .fprev.c-jaune{--pc:var(--pc-jaune);--pci:var(--pc-jaune-ink)}.fprev.c-orange{--pc:var(--pc-orange);--pci:var(--pc-orange-ink)}.fprev.c-rouge{--pc:var(--retard);--pci:var(--retard-ink)}
 .fp-tete{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:4px}
 .fp-delai{background:var(--pc);color:var(--pci);font-weight:700;font-size:13px;padding:2px 8px;white-space:nowrap}
+
+/* Alertes à l'ouverture (Priorités) et interrupteurs (Réglages) */
+.al{--pc:var(--pc-bleu);--pci:var(--pc-bleu-ink);background:var(--surface);border:1px solid var(--line);border-left:8px solid var(--pc);padding:12px 14px;margin-bottom:10px}
+.al.c-jaune{--pc:var(--pc-jaune);--pci:var(--pc-jaune-ink)}.al.c-orange{--pc:var(--pc-orange);--pci:var(--pc-orange-ink)}.al.c-rouge{--pc:var(--retard);--pci:var(--retard-ink)}
+.al .t{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.al .t b{font-size:19px}
+.al .d{background:var(--pc);color:var(--pci);font-weight:700;font-size:14px;padding:3px 9px;white-space:nowrap}
+.al p{margin:6px 0 0;font-size:16px}
+.al .btn{margin-top:8px;padding:8px 12px}
+.tg{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--line);font-size:17px}
+.sw{width:52px;height:30px;border-radius:15px;background:#8a8c8f;position:relative;border:0;padding:0;cursor:pointer;flex:none}
+.sw::after{content:'';position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff}
+.sw.on{background:var(--toulouse)}.sw.on::after{left:25px}
 </style>
 </head>
 <body>
@@ -306,5 +319,6 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 <script src="tableau.js"></script>
 <script src="planning.js"></script>
 <script src="saisie.js"></script>
+<script src="alertes.js"></script>
 </body>
 </html>
