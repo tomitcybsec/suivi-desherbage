@@ -53,6 +53,27 @@ const Planning = (() => {
     const it = { id: uid(), creeLe: Date.now(), modifieLe: Date.now(), copieLe: 0, statut: 'prevu', etat: '', observations: '', ...d };
     state.planning.push(it); majPassages(it); enregistrer(); return it;
   }
+  // interventions déjà prévues qui ressemblent à une nouvelle : même type, au moins une rue en commun
+  //   - même jour (planning ou tableau importé) : « c'est peut-être la même »
+  //   - à 1-3 jours (planning seulement) : on peut proposer de la déplacer
+  function doublons(d) {
+    if (!d || !d.type || N(d.type) === 'autre') return { memeJour: [], proches: [] };
+    const rues = new Set(d.rueIds || []), type = N(d.type);
+    const commun = it => (it.rueIds || []).filter(id => rues.has(id));
+    const memeJour = [], proches = [];
+    (state.planning || []).forEach(p => {
+      if (p.statut !== 'prevu' || N(p.type) !== type || !commun(p).length) return;
+      const ecart = Math.abs(ecartJours(d.date, p.date));
+      if (ecart === 0) memeJour.push({ source: 'planning', it: p });
+      else if (ecart <= 3) proches.push({ source: 'planning', it: p, ecart });
+    });
+    (state.interventions || []).forEach(l => {
+      if (l.date !== d.date || N(l.type) !== type || /annul/.test(N(l.statutTexte || l.statut || '')) || !commun(l).length) return;
+      memeJour.push({ source: 'tableau', it: l });
+    });
+    proches.sort((a, b) => a.ecart - b.ecart);
+    return { memeJour, proches };
+  }
   function changer(id, modif) {
     const it = state.planning.find(p => p.id === id); if (!it) return;
     Object.assign(it, modif, { modifieLe: Date.now() });
@@ -107,7 +128,7 @@ const Planning = (() => {
   }
   const aCopier = () => state.planning.filter(p => !p.copieLe || p.modifieLe > p.copieLe);
 
-  return { annuaire, motsAgents, lieuTexte, ajouter, changer, valider, reporter, annuler, supprimer, candidats, copier, aCopier, estHerbe, STATUT_TXT, ETAT_TXT };
+  return { annuaire, motsAgents, lieuTexte, ajouter, doublons, changer, valider, reporter, annuler, supprimer, candidats, copier, aCopier, estHerbe, STATUT_TXT, ETAT_TXT };
 })();
 
 /* ================= Interface ================= */
