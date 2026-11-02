@@ -31,6 +31,7 @@
       agents: new Map(), etat: '', obs: '', q: '',
     };
     f.date = f.mode === 'fait' ? aujourdhui() : addJours(aujourdhui(), 1);
+    if (opts.date && (f.mode === 'fait' ? opts.date <= aujourdhui() : opts.date >= aujourdhui())) f.date = opts.date;
     rendreForm();
     dlg.showModal();
   }
