@@ -3,7 +3,7 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.9.24';
+const VERSION = '1.9.25';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
 const WX_MAX_AGE_MS = 3 * 3600 * 1000; // on actualise la météo toutes les 3 h au plus
@@ -88,9 +88,15 @@ async function appelMeteo(base, params, essais) {
   // essaie avec toutes les variables, puis avec moins si le service en refuse une
   for (const vars of essais || [VARS, VARS.slice(0, 3)]) {
     const url = `${base}?${new URLSearchParams({ ...params, daily: vars.join(','), timezone: 'Europe/Paris' })}`;
-    const r = await fetch(url);
+    // si le service est surchargé (erreur 429 ou 5xx) ou le réseau coupe un instant : on réessaie 3 fois, en attendant un peu
+    let r = null;
+    for (let k = 0; k < 3; k++) {
+      try { r = await fetch(url); } catch (e) { r = null; if (k === 2) throw e; }
+      if (r && r.status !== 429 && r.status < 500) break;
+      if (k < 2) await new Promise(ok => setTimeout(ok, 1500 * (k + 1)));
+    }
     if (r.ok) return r.json();
-    if (r.status !== 400) throw new Error('HTTP ' + r.status);
+    if (r.status !== 400) throw new Error(r.status >= 500 || r.status === 429 ? `service météo momentanément indisponible, HTTP ${r.status}` : 'HTTP ' + r.status);
   }
   throw new Error('Requête météo refusée');
 }
