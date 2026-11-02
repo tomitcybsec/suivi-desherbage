@@ -81,7 +81,7 @@ const Alertes = (() => {
       `UID:alerte-${a.cle}-${a.date}-${Date.now()}@helpinghand`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`,
       `DTSTART;VALUE=DATE:${ymd(a.date)}`, `DTEND;VALUE=DATE:${ymd(addJours(a.date, 1))}`,
       `SUMMARY:${txt(a.titre + ' (estimation)')}`, `DESCRIPTION:${txt(a.texte + ' Estimation d\'après la météo.')}`,
-      'BEGIN:VALARM', 'TRIGGER:-P1D', 'ACTION:DISPLAY', `DESCRIPTION:${txt(a.titre)}`, 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+      'BEGIN:VALARM', `TRIGGER:-P${a.rappel || 1}D`, 'ACTION:DISPLAY', `DESCRIPTION:${txt(a.titre)}`, 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
     const url = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' }));
     const l = document.createElement('a'); l.href = url; l.download = `alerte-${a.date}.ics`; document.body.appendChild(l); l.click(); l.remove();
     setTimeout(() => URL.revokeObjectURL(url), 5000);

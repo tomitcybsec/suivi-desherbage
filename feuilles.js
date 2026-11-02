@@ -144,6 +144,14 @@ const Feuilles = (() => {
     });
     return [...out, ...[...reste].map(nomR)];
   }
+  // « déjà prévu jeudi » : rues de la carte déjà au planning pour un coordonné ou un pompage
+  function dejaTexte(ids) {
+    if (typeof dejaPrevu !== 'function') return '';
+    const m = dejaPrevu(p => Feuilles.estRamassage(p.type, `${p.intervention} ${p.materiel}`));
+    const l = ids.filter(id => m[id]); if (!l.length) return '';
+    const dates = [...new Set(l.map(id => m[id]))].sort().map(d => `${JOURS_COURTS[new Date(toUTC(d)).getUTCDay()]} ${fmtJM(d)}`);
+    return `<div class="small"><strong>Déjà prévu ${dates.join(', ')}</strong> (${l.length} rue${l.length > 1 ? 's' : ''} sur ${ids.length})</div>`;
+  }
   const delaiTexte = n => n <= 0 ? "aujourd'hui" : n === 1 ? 'demain' : `dans ${n} jours`;
   function blocPrevision() {
     const p = Feuilles.previsions();
@@ -151,7 +159,7 @@ const Feuilles = (() => {
     if (p.maintenant.length) h += `<div class="fprev c-rouge"><div class="fp-tete"><b>À ramasser maintenant</b><span class="fp-delai">aujourd'hui</span></div>
       <div>Prévoir coordonné ou pompage</div><div class="small">${nomsGroupes(p.maintenant).map(esc).join(', ')}</div></div>`;
     h += p.semaines.map(s => `<div class="fprev c-${s.classe}"><div class="fp-tete"><b>Semaine du ${fmtJour(s.lundi)} au ${fmtJour(s.vendredi)}</b><span class="fp-delai">${delaiTexte(s.delta)}</span></div>
-      <div>Prévoir coordonné ou pompage</div><div class="small">${nomsGroupes(s.ids).map(esc).join(', ')}</div>
+      <div>Prévoir coordonné ou pompage</div><div class="small">${nomsGroupes(s.ids).map(esc).join(', ')}</div>${dejaTexte(s.ids)}
       ${Feuilles.modeSimple() ? '' : `<div class="muted small">Estimation · fiabilité : ${s.confiance}</div>`}
       <button class="btn" type="button" data-ics="${s.lundi}" style="margin-top:8px">Ajouter à mon agenda (rappel 3 jours avant)</button></div>`).join('');
     if (!p.maintenant.length && !p.semaines.length) h += '<p class="muted small" style="margin:0 0 8px">Rien à prévoir sur les 15 prochains jours (estimation).</p>';
