@@ -15,6 +15,14 @@ const Alertes = (() => {
   const jourTxt = (d, n) => n <= 0 ? "aujourd'hui" : n === 1 ? 'demain' : JOURS[dow(d)];
   const classe = n => n <= 1 ? 'rouge' : n <= 3 ? 'orange' : n <= 6 ? 'jaune' : 'bleu';
   const jourPrevu = d => { const j = meteo.jours[d]; return j && (d === aujourdhui() || j.prev) ? j : null; };
+  // confirmation discrète par les autres modèles, seulement pour les alertes lointaines (3 jours et plus) :
+  // si les autres modèles ne voient ni pluie ni vent, l'alerte n'est pas affichée. Sans données, on garde l'alerte.
+  const confirme = (d, k, type) => {
+    if (k < 3) return true;
+    const m = meteo.modeles && meteo.modeles[d]; const v = m && m[type];
+    if (!v || !v.length) return true;
+    return type === 'pluie' ? v.some(x => x >= 1) : v.some(x => x >= 40);
+  };
   const pleut = j => (j.pluie || 0) >= 2 || (j.proba != null && j.proba >= 60);
   const fortePluie = j => (j.pluie || 0) >= 10;
   const ventFort = j => j.vent != null && j.vent >= 50;
@@ -37,14 +45,14 @@ const Alertes = (() => {
     }
     // pluie et vent : jours travaillés seulement
     if (R.pluie) {
-      const f = jours.find(x => ouvre(x.d) && x.d !== jourAvaloir && (j => j && pleut(j))(jourPrevu(x.d)));
+      const f = jours.find(x => ouvre(x.d) && x.d !== jourAvaloir && (j => j && pleut(j))(jourPrevu(x.d)) && confirme(x.d, x.k, 'pluie'));
       if (f) {
         const np = nbPlanif(f.d);
         out.push({ cle: 'pluie', n: f.k, date: f.d, titre: `Pluie prévue ${jourTxt(f.d, f.k)}`, texte: np ? `${np} intervention${np > 1 ? 's' : ''} prévue${np > 1 ? 's' : ''} ce jour-là : à reporter ?` : 'Les coordonnés et rotofils risquent d\'être annulés.' });
       }
     }
     if (R.vent) {
-      const f = jours.find(x => ouvre(x.d) && (j => j && ventFort(j))(jourPrevu(x.d)));
+      const f = jours.find(x => ouvre(x.d) && (j => j && ventFort(j))(jourPrevu(x.d)) && confirme(x.d, x.k, 'vent'));
       if (f) out.push({ cle: 'vent', n: f.k, date: f.d, titre: `Vent fort prévu ${jourTxt(f.d, f.k)}`, texte: 'Balayeuse et souffleur déconseillés.' });
     }
     // chute de feuilles : jour travaillé avec un indice « très forte » (saison, renforcée par le gel et le vent)

@@ -3,7 +3,7 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.9.26';
+const VERSION = '1.9.27';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
 const WX_MAX_AGE_MS = 3 * 3600 * 1000; // on actualise la météo toutes les 3 h au plus
@@ -151,6 +151,7 @@ async function majMeteo(force = false) {
         meteo.complement = { le: Date.now(), plage: `${debut} → ${fin}`, ajoutes: Object.keys(meteo.jours).length - avant, detail: detail.join(' · ') || 'rien à compléter' };
       }
       meteo.majLe = Date.now(); meteo.erreur = null;
+      await majModeles(pos); // comparaison discrète avec d'autres modèles (Météo-France, européen) : sans erreur affichée si ça échoue
     } catch (e) {
       meteo.erreur = String(e.message || e);
     }
@@ -158,6 +159,23 @@ async function majMeteo(force = false) {
     meteoEnCours = null;
   })();
   return meteoEnCours;
+}
+// Autres modèles de prévision (Météo-France AROME/ARPEGE, européen). Un seul essai, silencieux : sert seulement à confirmer
+// les alertes lointaines (3 jours et plus) — voir alertes.js. Sans réponse, les alertes se basent sur le modèle principal.
+async function majModeles(pos) {
+  try {
+    const modeles = ['meteofrance_seamless', 'ecmwf_ifs025'];
+    const url = 'https://api.open-meteo.com/v1/forecast?' + new URLSearchParams({ ...pos, models: modeles.join(','), daily: 'precipitation_sum,wind_speed_10m_max', forecast_days: 7, timezone: 'Europe/Paris' });
+    const r = await fetch(url); if (!r.ok) return;
+    const d = (await r.json())?.daily; if (!d?.time) return;
+    const out = {};
+    d.time.forEach((t, i) => {
+      const pluie = [], vent = [];
+      modeles.forEach(m => { const p = d['precipitation_sum_' + m]?.[i], v = d['wind_speed_10m_max_' + m]?.[i]; if (p != null) pluie.push(p); if (v != null) vent.push(v); });
+      if (pluie.length || vent.length) out[t] = { pluie, vent };
+    });
+    meteo.modeles = out; persistMeteo();
+  } catch (e) { /* silencieux */ }
 }
 // date la plus ancienne dont on a besoin et qui manque dans le cache (passages > 92 jours)
 function joursManquants(de, a) {
