@@ -23,6 +23,7 @@
 | `planning.js` | Interventions prévues et réalisées, boutons Fait / Reporter / Annuler, alertes météo (pluie, vent), « Copier pour mon tableau » (lignes TSV dans l'ordre des colonnes de son Excel) |
 | `feuilles.js` | Module feuilles mortes |
 | `alertes.js` | Alertes à l'ouverture (haut de Priorités) : pluie, vent, chute de feuilles, avaloirs, interventions pas faites ; interrupteurs dans Réglages |
+| `herbe.js` | Prévision de l'herbe par semaine (Suivi > Herbe), « déjà prévu » (rues déjà au planning) |
 | `tableau.js` | Import du tableau Excel (lecture locale avec `xlsx.full.min.js`), récap par rue, journal |
 | `dictee.js` | Moteur de reconnaissance des noms de rues dans un texte libre (utilisé par l'import Excel). L'interface de dictée vocale a été **abandonnée** à sa demande. |
 | `sw.js`, `manifest.webmanifest`, `icon-*.png` | Installation comme application, mode hors ligne |
