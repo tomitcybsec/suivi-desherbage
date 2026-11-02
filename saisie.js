@@ -180,12 +180,57 @@
       agents, observations: f.obs.trim(),
     };
     if (f.mode === 'fait') Object.assign(d, { statut: 'realise', dateRealise: f.date, etat: f.inter.has('rotofil') ? f.etat : '' });
+    else {
+      // attention aux doublons : une intervention du même type est-elle déjà prévue ?
+      const dbl = Planning.doublons(d);
+      if (dbl.memeJour.length || dbl.proches.length) { demanderDoublon(d, dbl); return; }
+    }
+    terminer(d);
+  }
+
+  function terminer(d) {
     Planning.ajouter(d);
     dlg.close();
     ui.selection.clear();
     toast(f.mode === 'fait' ? `Enregistré : ${f.rues.length} rue${f.rues.length > 1 ? 's' : ''}, ${fmtJM(f.date)}.` : `Ajouté au planning : ${jourCourt(f.date)}.`);
     rendre();
   }
+
+  /* ---------- Avertissement « déjà prévu » ---------- */
+  const dlgD = document.createElement('dialog');
+  dlgD.id = 'dlgDoublon';
+  document.body.appendChild(dlgD);
+  let enAttente = null;
+  function demanderDoublon(d, dbl) {
+    enAttente = { d, dbl };
+    const ligne = x => `<li><strong>${esc(jourCourt(x.it.date))}</strong> : ${esc(x.it.type || '')}, ${esc(Planning.lieuTexte(x.it))}${x.source === 'tableau' ? ' <span class="muted small">(dans ton tableau importé)</span>' : ''}</li>`;
+    const proche = dbl.proches[0];
+    dlgD.innerHTML = `<div class="dlg-head"><h3>Attention, déjà prévu ?</h3><button class="x" data-dnon aria-label="Fermer">×</button></div>
+      <div class="dlg-body">
+        ${dbl.memeJour.length ? `<p style="margin-top:0"><strong>Le même jour (${esc(jourCourt(d.date))})</strong>, il y a déjà :</p><ul>${dbl.memeJour.map(ligne).join('')}</ul>` : ''}
+        ${dbl.proches.length ? `<p style="margin-top:0"><strong>Quelques jours à côté</strong>, il y a déjà :</p><ul>${dbl.proches.map(ligne).join('')}</ul>` : ''}
+        <p class="muted small">Est-ce la même opération ?</p>
+      </div>
+      <div class="dlg-foot" style="flex-wrap:wrap">
+        ${dbl.memeJour.length ? '<button class="btn primary" type="button" data-dmeme>Oui, c\'est la même (ne rien ajouter)</button>' : ''}
+        ${proche ? `<button class="btn primary" type="button" data-ddepl>Déplacer celle du ${esc(jourCourt(proche.it.date))} au ${esc(jourCourt(d.date))}</button>` : ''}
+        <button class="btn" type="button" data-dautre>Non, en ajouter une autre</button>
+        <button class="btn" type="button" data-dnon>Retour</button>
+      </div>`;
+    dlgD.showModal();
+  }
+  dlgD.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b || !enAttente) return;
+    const { d, dbl } = enAttente;
+    if (b.hasAttribute('data-dnon')) { dlgD.close(); return; }
+    dlgD.close();
+    if (b.hasAttribute('data-dmeme')) { dlg.close(); ui.selection.clear(); toast('Rien ajouté : c\'était déjà prévu.'); rendre(); return; }
+    if (b.hasAttribute('data-ddepl')) {
+      const p = dbl.proches[0].it; Planning.changer(p.id, { date: d.date });
+      dlg.close(); ui.selection.clear(); toast(`Intervention déplacée au ${jourCourt(d.date)}.`); rendre(); return;
+    }
+    if (b.hasAttribute('data-dautre')) terminer(d);
+  });
 
   /* ---------- Barre « + Saisir » ---------- */
   const fab = $('#fabSaisir');
