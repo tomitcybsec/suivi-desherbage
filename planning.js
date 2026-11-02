@@ -254,7 +254,7 @@ const Planning = (() => {
     const today = aujourdhui(), fin = addJours(today, 7);
     const L = state.planning.filter(p => p.statut === 'prevu' && p.date <= fin).sort((a, b) => a.date.localeCompare(b.date));
     const head = `<h2 style="display:flex;justify-content:space-between;align-items:center;gap:8px">Planning des 7 jours <button class="btn" data-pl="prevoir">+ Prévoir</button></h2>`;
-    const alertes = alertesPluie();
+    const alertes = typeof blocAlertes === 'function' ? '' : alertesPluie(); // les alertes simples (alertes.js) remplacent l'ancien bandeau chiffré
     if (!L.length) return alertes + head + `<p class="muted small" style="margin-top:0">Rien de prévu. Touche « + Prévoir » ou coche des rues dans l'onglet Rues.</p>`;
     return alertes + head + `<div class="list">${L.map(it => carte(it)).join('')}</div>`;
   };

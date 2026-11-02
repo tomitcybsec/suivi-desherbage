@@ -3,7 +3,7 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.9.25';
+const VERSION = '1.9.26';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
 const WX_MAX_AGE_MS = 3 * 3600 * 1000; // on actualise la météo toutes les 3 h au plus
@@ -381,6 +381,7 @@ function rendrePriorites() {
   if (meteo.erreur) {
     html += `<div class="notice warn">La météo n'a pas pu être récupérée (${esc(meteo.erreur)}). Les calculs utilisent ${nObs ? 'les dernières données connues et ' : ''}des moyennes saisonnières. <button class="btn" data-act="meteo">Réessayer</button></div>`;
   }
+  if (typeof blocAlertes === 'function') html += blocAlertes();
   html += blocCinqAFaire();
   html += `<div class="resume">${['retard', 'semaine', 'quinzaine'].map(k => `<button class="${k}" data-goto="${k}"><b>${groupes[k].length}</b><span>${k === 'retard' ? 'en retard' : k === 'semaine' ? 'cette semaine' : 'sous 15 jours'}</span></button>`).join('')}</div>`;
   html += `<p class="resume-2">${groupes.ok.length} à jour${groupes.inconnu.length ? ` · <button data-goto="inconnu">${groupes.inconnu.length} jamais saisie${groupes.inconnu.length > 1 ? 's' : ''}</button>` : ''}</p>`;
@@ -526,6 +527,8 @@ function rendreReglages() {
       </div>
       <div class="actions"><button class="btn primary" data-act="saveR">Enregistrer les réglages</button><button class="btn" data-act="resetR">Valeurs par défaut</button></div>
     </div>
+
+    ${typeof blocReglagesAlertes === 'function' ? blocReglagesAlertes() : ''}
 
     <h2>Feuilles mortes</h2>
     <div class="card">
