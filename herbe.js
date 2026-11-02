@@ -62,7 +62,8 @@
     const c = calcul(); window.__herbe = c;
     let h = `<h3 class="fp-titre">Prévision sur 3 semaines <span class="fp-est">estimation</span></h3>`;
     if (c.retard.length) h += `<div class="fprev c-rouge"><div class="fp-tete"><b>En retard maintenant</b><span class="fp-delai">aujourd'hui</span></div>
-      <div>Prévoir rotofil</div><div class="small">${resume(c.retard)}</div>${liste(c.retard)}</div>`;
+      <div>Prévoir rotofil</div><div class="small">${resume(c.retard)}</div>${liste(c.retard)}
+      <button class="btn" type="button" data-herbe-plan="retard" style="margin-top:8px">Ajouter au planning</button></div>`;
     h += c.semaines.map(g => {
       const pl = pluieSemaine(g);
       return `<div class="fprev c-${classeCouleur(g.delta)}"><div class="fp-tete"><b>Semaine du ${fmtJour(g.lundi)} au ${fmtJour(g.vendredi)}</b><span class="fp-delai">${delai(g.delta)}</span></div>
@@ -70,16 +71,17 @@
       ${pl ? `<div class="small">${esc(pl)} : le rotofil peut être annulé.</div>` : ''}
       ${g.delta > 10 ? '<div class="muted small">À confirmer : prévision lointaine</div>' : ''}
       ${liste(g.items)}
-      <button class="btn" type="button" data-herbe-ics="${g.lundi}" style="margin-top:8px">Ajouter à mon agenda (rappel 3 jours avant)</button></div>`;
+      <button class="btn" type="button" data-herbe-plan="${g.lundi}" style="margin-top:8px">Ajouter au planning</button></div>`;
     }).join('');
     if (!c.retard.length && !c.semaines.length) h += '<p class="muted small" style="margin:0 0 8px">Rien à prévoir sur les 3 prochaines semaines (estimation). L\'herbe ne pousse presque pas en ce moment.</p>';
     return h;
   };
 
   document.getElementById('view').addEventListener('click', e => {
-    const b = e.target.closest('[data-herbe-ics]'); if (!b) return;
-    const g = ((window.__herbe || {}).semaines || []).find(x => x.lundi === b.dataset.herbeIcs); if (!g || typeof Alertes === 'undefined') return;
-    Alertes.agenda({ cle: 'herbe', date: g.premier, rappel: 3, titre: 'Herbe : prévoir rotofil',
-      texte: `Semaine du ${fmtJour(g.lundi)} au ${fmtJour(g.vendredi)} : ${g.items.length} rue${g.items.length > 1 ? 's' : ''}.` });
+    const b = e.target.closest('[data-herbe-plan]'); if (!b || typeof ouvrirSaisie !== 'function') return;
+    const c = window.__herbe || {}, cle = b.dataset.herbePlan;
+    const items = cle === 'retard' ? c.retard : ((c.semaines || []).find(x => x.lundi === cle) || {}).items;
+    const g = (c.semaines || []).find(x => x.lundi === cle);
+    if (items) ouvrirSaisie({ mode: 'prevu', rueIds: items.map(x => x.r.id), inter: ['rotofil'], date: g ? g.premier : undefined });
   });
 })();

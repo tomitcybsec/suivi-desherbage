@@ -40,7 +40,7 @@ const Alertes = (() => {
       const f = [1, 2].map(k => ({ k, d: addJours(today, k) })).find(x => { const j = jourPrevu(x.d); return j && fortePluie(j); });
       if (f) {
         jourAvaloir = f.d;
-        out.push({ cle: 'avaloirs', n: f.k, date: f.d, titre: `Pluie ${f.k === 1 ? 'demain' : 'dans 2 jours'} : ramasser avant`, texte: 'Des feuilles risquent de boucher les avaloirs.', agenda: true });
+        out.push({ cle: 'avaloirs', n: f.k, date: f.d, titre: `Pluie ${f.k === 1 ? 'demain' : 'dans 2 jours'} : ramasser avant`, texte: 'Des feuilles risquent de boucher les avaloirs.', planning: { rues: ruesChargees, inter: ['coordonne'], date: f.k >= 2 ? addJours(f.d, -1) : today } });
       }
     }
     // pluie et vent : jours travaillés seulement
@@ -62,7 +62,7 @@ const Alertes = (() => {
       if (f) {
         const i = Feuilles.indice(f.d);
         const cause = i.gel && i.vent ? 'Gel et vent : ' : i.gel ? 'Gel : ' : i.vent ? 'Vent : ' : '';
-        out.push({ cle: 'chute', n: f.k, date: f.d, titre: 'Chute de feuilles prévue', texte: `${cause}beaucoup de feuilles vont tomber.`.replace(/^./, c => c.toUpperCase()), agenda: true });
+        out.push({ cle: 'chute', n: f.k, date: f.d, titre: 'Chute de feuilles prévue', texte: `${cause}beaucoup de feuilles vont tomber.`.replace(/^./, c => c.toUpperCase()), planning: { rues: Feuilles.rues().filter(id => !Feuilles.stoppee(id)), inter: ['coordonne'], date: f.d } });
       }
     }
     // interventions prévues dont la date est passée
@@ -73,22 +73,7 @@ const Alertes = (() => {
     return out.sort((a, b) => a.n - b.n);
   }
 
-  // « Ajouter à mon agenda » : fichier .ics (jour de l'alerte, rappel la veille)
-  const txt = t => String(t).replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
-  function agenda(a) {
-    const ymd = d => d.replace(/-/g, '');
-    const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Helping Hand//FR', 'CALSCALE:GREGORIAN', 'BEGIN:VEVENT',
-      `UID:alerte-${a.cle}-${a.date}-${Date.now()}@helpinghand`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`,
-      `DTSTART;VALUE=DATE:${ymd(a.date)}`, `DTEND;VALUE=DATE:${ymd(addJours(a.date, 1))}`,
-      `SUMMARY:${txt(a.titre + ' (estimation)')}`, `DESCRIPTION:${txt(a.texte + ' Estimation d\'après la météo.')}`,
-      'BEGIN:VALARM', `TRIGGER:-P${a.rappel || 1}D`, 'ACTION:DISPLAY', `DESCRIPTION:${txt(a.titre)}`, 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
-    const url = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' }));
-    const l = document.createElement('a'); l.href = url; l.download = `alerte-${a.date}.ics`; document.body.appendChild(l); l.click(); l.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
-    toast('Fichier agenda créé : ouvre-le pour l\'ajouter à ton agenda.');
-  }
-
-  return { liste, agenda, quand, classe, REGLAGES };
+  return { liste, quand, classe, REGLAGES };
 })();
 
 /* ================= Interface ================= */
@@ -99,7 +84,7 @@ const Alertes = (() => {
     return `<h2>À prévoir <span class="muted">(${L.length} alerte${L.length > 1 ? 's' : ''})</span></h2>` + L.map((a, i) =>
       `<div class="al c-${Alertes.classe(a.n)}"><div class="t"><b>${esc(a.titre)}</b><span class="d">${Alertes.quand(a.n)}</span></div>
         <p>${esc(a.texte)}</p>
-        ${a.agenda ? `<button class="btn" type="button" data-alerte-agenda="${i}">Ajouter à mon agenda</button>` : ''}
+        ${a.planning ? `<button class="btn" type="button" data-alerte-plan="${i}">Ajouter au planning</button>` : ''}
         ${a.voir ? '<button class="btn" type="button" data-alerte-voir>Voir le planning</button>' : ''}</div>`).join('');
   };
 
@@ -112,8 +97,8 @@ const Alertes = (() => {
   document.getElementById('view').addEventListener('click', e => {
     const r = e.target.closest('[data-alerte-reg]');
     if (r) { const k = r.dataset.alerteReg; state.alertes[k] = !state.alertes[k]; persist(); rendre(); return; }
-    const g = e.target.closest('[data-alerte-agenda]');
-    if (g) { const a = (window.__alertes || [])[+g.dataset.alerteAgenda]; if (a) Alertes.agenda(a); return; }
+    const g = e.target.closest('[data-alerte-plan]');
+    if (g) { const a = (window.__alertes || [])[+g.dataset.alertePlan]; if (a && a.planning && typeof ouvrirSaisie === 'function') ouvrirSaisie({ mode: 'prevu', rueIds: a.planning.rues, inter: a.planning.inter, date: a.planning.date }); return; }
     if (e.target.closest('[data-alerte-voir]')) {
       ui.suiviVue = 'planning';
       const b = document.querySelector('nav.tabs [data-tab="historique"]'); if (b) b.click(); else rendre();
