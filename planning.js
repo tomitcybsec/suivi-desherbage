@@ -142,24 +142,44 @@ const Planning = (() => {
   function ouvrirAction(type, id) {
     const it = state.planning.find(p => p.id === id); if (!it) return;
     action = { type, id };
-    const titre = type === 'fait' ? 'Intervention faite' : 'Reporter l\'intervention';
+    const titre = type === 'fait' ? 'Intervention faite' : type === 'modifier' ? 'Modifier l\'intervention' : 'Reporter l\'intervention';
     let corps = `<p style="margin-top:0"><strong>${esc(it.type || 'Intervention')}</strong> — ${esc(Planning.lieuTexte(it))}<br><span class="muted small">prévue le ${fmtJour(it.date)}${it.agents ? ' · ' + esc(it.agents) : ''}</span></p>`;
     if (type === 'fait') {
       corps += `<label class="f">Date de réalisation<input type="date" id="paDate" value="${aujourdhui()}" max="${aujourdhui()}"></label>`;
       if (Planning.estHerbe(it)) corps += `<p class="small" style="margin:14px 0 6px"><strong>État de l'herbe en arrivant</strong></p><div class="radios">
         ${Object.entries(Planning.ETAT_TXT).map(([k, v]) => `<label><input type="radio" name="paEtat" value="${k}"><span>${esc(v)}</span></label>`).join('')}
         <label><input type="radio" name="paEtat" value="" checked><span>Non renseigné</span></label></div>`;
+    } else if (type === 'modifier') {
+      const prevu = it.statut === 'prevu';
+      corps += prevu ? `<label class="f">Date prévue<input type="date" id="paDate" value="${it.date}" min="${aujourdhui()}"></label>` : '';
+      corps += `<label class="f">Agents<input type="text" id="paAgents" value="${esc(it.agents || '')}" autocomplete="off"></label>
+        <div class="chips" style="margin:6px 0 10px">${Planning.annuaire().map(a => `<button type="button" class="chipbtn" data-agentadd="${esc(a.complet)}">+ ${esc(a.complet)}</button>`).join('')}</div>
+        <p class="muted small" style="margin:-4px 0 10px">Pour remplacer un agent (malade, absent) : corrige le texte ci-dessus, ou touche un nom pour l'ajouter.</p>
+        <label class="f">Matériel<input type="text" id="paMateriel" value="${esc(it.materiel || '')}" autocomplete="off"></label>
+        <label class="f">Observations<input type="text" id="paObs" value="${esc(it.observations || '')}" autocomplete="off"></label>`;
     } else {
       corps += `<label class="f">Nouvelle date<input type="date" id="paDate" value="${addJours(aujourdhui(), 1)}" min="${aujourdhui()}"></label>`;
     }
     dlg.innerHTML = `<div class="dlg-head"><h3>${titre}</h3><button class="x" data-ferme aria-label="Fermer">×</button></div>
       <div class="dlg-body">${corps}</div>
-      <div class="dlg-foot"><button class="btn" data-ferme>Annuler</button><button class="btn primary" id="paOk">${type === 'fait' ? 'Valider' : 'Reporter'}</button></div>`;
+      <div class="dlg-foot"><button class="btn" data-ferme>Annuler</button><button class="btn primary" id="paOk">${type === 'fait' ? 'Valider' : type === 'modifier' ? 'Enregistrer' : 'Reporter'}</button></div>`;
     dlg.showModal();
   }
   dlg.addEventListener('click', e => {
     if (e.target.closest('[data-ferme]')) { dlg.close(); return; }
+    const ajout = e.target.closest('[data-agentadd]');
+    if (ajout) { const c = dlg.querySelector('#paAgents'); if (c) c.value = [c.value.trim(), ajout.dataset.agentadd].filter(Boolean).join(', '); return; }
     if (e.target.id !== 'paOk' || !action) return;
+    if (action.type === 'modifier') {
+      const it = state.planning.find(x => x.id === action.id); if (!it) { dlg.close(); return; }
+      const modif = { agents: dlg.querySelector('#paAgents').value.trim(), materiel: dlg.querySelector('#paMateriel').value.trim(), observations: dlg.querySelector('#paObs').value.trim() };
+      const champDate = dlg.querySelector('#paDate');
+      if (champDate) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(champDate.value)) { toast('Date invalide.'); return; }
+        modif.date = champDate.value;
+      }
+      Planning.changer(action.id, modif); dlg.close(); toast('Modifications enregistrées.'); return;
+    }
     const date = dlg.querySelector('#paDate').value;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { toast('Date invalide.'); return; }
     if (action.type === 'fait') {
@@ -189,9 +209,10 @@ const Planning = (() => {
         ${it.statut === 'prevu' ? (al => al ? `<div class="pluie ${al.niveau}">${esc(al.titre)} ${esc(al.detail)}</div>` : '')(alerteMeteo(it.date)) : ''}
         ${actions && it.statut === 'prevu' ? `<div class="actions" style="margin-top:8px">
           <button class="btn primary" data-pl="fait" data-id="${it.id}">Fait</button>
+          <button class="btn" data-pl="modifier" data-id="${it.id}">Modifier</button>
           <button class="btn" data-pl="reporter" data-id="${it.id}">Reporter</button>
           <button class="btn danger" data-pl="annuler" data-id="${it.id}">Annuler</button></div>` : ''}
-        ${actions && it.statut !== 'prevu' ? `<div class="actions" style="margin-top:8px"><button class="btn" data-pl="rouvrir" data-id="${it.id}">Remettre en « Prévu »</button></div>` : ''}
+        ${actions && it.statut !== 'prevu' ? `<div class="actions" style="margin-top:8px">${it.statut === 'realise' ? `<button class="btn" data-pl="modifier" data-id="${it.id}">Modifier</button> ` : ''}<button class="btn" data-pl="rouvrir" data-id="${it.id}">Remettre en « Prévu »</button></div>` : ''}
       </div>
       <div class="right">${etiquette}</div></div>`;
   }
@@ -264,6 +285,7 @@ const Planning = (() => {
     if (a === 'copier') { Planning.copier(Planning.aCopier()); return; }
     if (a === 'fait') ouvrirAction('fait', id);
     if (a === 'reporter') ouvrirAction('reporter', id);
+    if (a === 'modifier') ouvrirAction('modifier', id);
     if (a === 'annuler' && confirm('Annuler cette intervention prévue ?')) { Planning.annuler(id); toast('Intervention annulée.'); }
     if (a === 'rouvrir') Planning.changer(id, { statut: 'prevu', dateRealise: null, etat: '' });
   });
