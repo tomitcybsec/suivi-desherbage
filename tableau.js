@@ -159,7 +159,7 @@ if (typeof document !== 'undefined' && document.getElementById('view')) (() => {
     const today = aujourdhui(), L = r.interventions;
     const herbe = L.filter(l => l.herbe && l.statut === 'realise' && l.date <= today);
     const ruesHerbe = new Set(herbe.flatMap(l => l.rueIds));
-    const prevuPasses = L.filter(l => l.statut === 'prevu' && l.date < today);
+    const prevuPasses = L.filter(l => l.source === 'tableau' && l.statut === 'prevu' && l.date < today);
     const ambi = L.filter(l => l.ambigus.length), non = L.filter(l => l.nonTrouves.length), zones = [...new Set(L.flatMap(l => l.zones))];
     const sansRue = L.filter(l => !l.rueIds.length && !l.zones.length);
     let h = `<p style="margin-top:0"><strong>${esc(r.fichier)}</strong> · feuille « ${esc(r.feuille)} »</p>
@@ -174,7 +174,7 @@ if (typeof document !== 'undefined' && document.getElementById('view')) (() => {
     if (ambi.length) h += `<div class="notice warn"><strong>À préciser dans le tableau</strong> (nom incomplet) :<br>${ambi.map(l => `n°${esc(l.n ?? '?')} : ${l.ambigus.map(a => esc(a.join(' ou '))).join(' ; ')}`).join('<br>')}</div>`;
     if (sansRue.length) h += `<div class="notice warn"><strong>Aucune rue reconnue</strong> : ${sansRue.map(l => `n°${esc(l.n ?? '?')} « ${esc(l.lieu.slice(0, 60))} »`).join(', ')}</div>`;
     if (non.length) h += `<p class="muted small">Mots ignorés (repères, pas des rues) : ${[...new Set(non.flatMap(l => l.nonTrouves))].map(t => '« ' + esc(t) + ' »').join(', ')}</p>`;
-    h += `<p class="small" style="margin-bottom:0">L'import <strong>remplace</strong> le précédent : tu peux réimporter ton tableau à chaque mise à jour, sans doublons. Les passages saisis dans l'appli (dictée, cases à cocher) sont conservés.</p>`;
+    h += `<p class="small" style="margin-bottom:0">L'import <strong>remplace</strong> le précédent tableau : tu peux réimporter ton tableau à chaque mise à jour, sans doublons. Les passages saisis dans l'appli (dictée, cases à cocher) sont conservés.</p>`;
     $('#impBody').innerHTML = h;
     dlg.showModal();
   }
@@ -202,6 +202,21 @@ if (typeof document !== 'undefined' && document.getElementById('view')) (() => {
   });
 
   /* ---------- Onglet « Suivi » ---------- */
+  // Toutes les interventions, pour le Récap et le Journal : lignes du tableau importé + interventions « Fait » saisies dans l'appli.
+  // Une intervention de l'appli déjà présente dans le tableau (même jour, même type, au moins une rue en commun) n'est comptée qu'une fois.
+  const normType = s => Dictee.norm(s || '');
+  function toutes() {
+    const tab = (state.interventions || []).map(l => Object.assign({ source: 'tableau' }, l));
+    const dejaDansTableau = it => tab.some(l => l.date === (it.dateRealise || it.date) && normType(l.type) === normType(it.type)
+      && (l.rueIds || []).some(id => (it.rueIds || []).includes(id)));
+    const appli = (state.planning || []).filter(p => p.statut === 'realise' && !dejaDansTableau(p)).map(p => ({
+      source: 'appli', cle: 'pl-' + p.id, n: null, date: p.dateRealise || p.date, type: p.type || 'Autre', lieu: Planning.lieuTexte(p),
+      intervention: p.intervention, materiel: p.materiel, poches: 0, agents: p.agents, observations: p.observations, statut: 'realise', statutTexte: 'Réalisé',
+      rueIds: p.rueIds || [], zones: p.zones || [], herbe: Planning.estHerbe(p),
+    }));
+    return [...tab, ...appli];
+  }
+
   function recap() {
     const today = aujourdhui();
     const lignes = new Map();
@@ -215,7 +230,7 @@ if (typeof document !== 'undefined' && document.getElementById('view')) (() => {
       if (l.herbe && (!x.rotofil || l.date > x.rotofil)) x.rotofil = l.date;
       if (l.poches) x.poches += l.poches;
     };
-    for (const l of state.interventions) {
+    for (const l of toutes()) {
       const vus = new Set(); // une voie en plusieurs tronçons ne compte qu'une fois par intervention
       l.rueIds.forEach(id => { const r = rueParId(id); if (r && !vus.has(r.voie)) { vus.add(r.voie); ajouter(r.voie, r.voie, id, l); } });
       l.zones.forEach(z => ajouter('zone:' + z, z, null, l));
@@ -224,8 +239,8 @@ if (typeof document !== 'undefined' && document.getElementById('view')) (() => {
   }
 
   function vueRecap() {
-    const L = state.interventions, today = aujourdhui();
-    if (!L.length) return `<div class="notice">Aucun tableau importé. <button class="btn" data-act="importTableau">Importer mon tableau de suivi</button></div>`;
+    const L = toutes(), today = aujourdhui();
+    if (!L.length) return `<div class="notice">Rien à afficher pour l'instant : aucune intervention faite ni tableau importé. <button class="btn" data-act="importTableau">Importer mon tableau de suivi</button></div>`;
     const rows = recap();
     const parType = {};
     L.filter(l => l.statut === 'realise' && l.date <= today).forEach(l => { parType[TYPES_COURTS(l.type)] = (parType[TYPES_COURTS(l.type)] || 0) + 1; });
@@ -243,12 +258,12 @@ if (typeof document !== 'undefined' && document.getElementById('view')) (() => {
   }
 
   function vueJournal() {
-    const L = [...state.interventions].sort((a, b) => b.date.localeCompare(a.date) || (b.n ?? 0) - (a.n ?? 0));
-    if (!L.length) return `<div class="notice">Aucun tableau importé. <button class="btn" data-act="importTableau">Importer mon tableau de suivi</button></div>`;
+    const L = toutes().sort((a, b) => b.date.localeCompare(a.date) || (b.n ?? 0) - (a.n ?? 0));
+    if (!L.length) return `<div class="notice">Rien à afficher pour l'instant : aucune intervention faite ni tableau importé. <button class="btn" data-act="importTableau">Importer mon tableau de suivi</button></div>`;
     return `<div class="hist-box">${L.map(l => {
       const st = l.statut === 'realise' ? '' : ` · <strong>${esc(STATUTS_TXT[l.statut] || l.statutTexte)}</strong>`;
       return `<div class="hist-item"><div class="grow">
-        <div class="small muted">${fmtJour(l.date)} · n°${esc(l.n ?? '?')} · ${esc(l.type || 'Autre')}${st}</div>
+        <div class="small muted">${fmtJour(l.date)} · ${l.source === 'appli' ? 'saisi dans l\'appli' : 'n°' + esc(l.n ?? '?')} · ${esc(l.type || 'Autre')}${st}</div>
         <strong>${esc(l.lieu)}</strong>
         <div class="small">${[l.intervention, l.materiel, l.poches ? l.poches + ' poches' : null].filter(Boolean).map(esc).join(' · ')}</div>
         ${l.agents ? `<div class="small muted">${esc(l.agents)}</div>` : ''}
