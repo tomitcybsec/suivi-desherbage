@@ -3,7 +3,7 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.9.32';
+const VERSION = '1.9.33';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
 const WX_MAX_AGE_MS = 3 * 3600 * 1000; // on actualise la météo toutes les 3 h au plus
@@ -390,7 +390,16 @@ function blocMeteo(pousse) {
   const tm = jours.reduce((s, x) => s + (x.j.tmax + x.j.tmin) / 2, 0) / jours.length;
   const mm = jours.reduce((s, x) => s + (x.j.pluie || 0), 0);
   const estime = jours.some(x => x.j.source === 'normale');
-  const motPluie = mm < 2 ? 'Pas de pluie' : mm < 10 ? 'Peu de pluie' : mm < 25 ? 'Pluie modérée' : 'Beaucoup de pluie';
+  // phrase sur la pluie, avec le jour (jamais « pas de pluie » tout seul : on dit jusqu'à quand)
+  const LONGS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+  const nomJour = d => d === today ? "aujourd'hui" : d === addJours(today, 1) ? 'demain' : LONGS[new Date(toUTC(d)).getUTCDay()];
+  const pluvieux = jours.filter(x => (x.j.pluie || 0) >= 2 || (x.j.proba != null && x.j.proba >= 60));
+  const forte = pluvieux.some(x => (x.j.pluie || 0) >= 10);
+  const fin = jours[jours.length - 1].d;
+  const motPluie = !pluvieux.length ? `Pas de pluie prévue jusqu'à ${nomJour(fin)}`
+    : pluvieux.length === 1 ? `${forte ? 'Forte pluie' : 'Pluie'} ${nomJour(pluvieux[0].d)}`
+    : pluvieux.length === 2 ? `${forte ? 'Forte pluie' : 'Pluie'} ${nomJour(pluvieux[0].d)} et ${nomJour(pluvieux[1].d)}`
+    : `Pluie ${pluvieux.length} jours sur ${jours.length}`;
   const motPousse = pousse === 'faible' ? 'peu' : pousse === 'moyenne' ? 'moyennement' : 'beaucoup';
   return `<div class="met"><div class="l1"><span class="big">${Math.round(tm)} <small>°C en moyenne</small></span><span class="pl">${motPluie}</span></div>
     <div class="l2">5 prochains jours travaillés · l'herbe pousse <strong>${motPousse}</strong>${estime ? ' <span class="muted small">(estimation)</span>' : ''}</div>
