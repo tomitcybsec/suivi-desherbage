@@ -84,4 +84,11 @@
     const g = (c.semaines || []).find(x => x.lundi === cle);
     if (items) ouvrirSaisie({ mode: 'prevu', rueIds: items.map(x => x.r.id), inter: ['rotofil'], date: g ? g.premier : undefined });
   });
+
+  // bouton de l'Accueil : va dans Suivi > Herbe
+  document.getElementById('view').addEventListener('click', e => {
+    if (!e.target.closest('[data-herbe-voir]')) return;
+    ui.suiviVue = 'passages';
+    const b = document.querySelector('nav.tabs [data-tab="historique"]'); if (b) b.click(); else rendre();
+  });
 })();
