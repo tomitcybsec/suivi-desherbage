@@ -3,7 +3,7 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.9.31';
+const VERSION = '1.9.32';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
 const WX_MAX_AGE_MS = 3 * 3600 * 1000; // on actualise la météo toutes les 3 h au plus
@@ -533,10 +533,11 @@ function rendreReglages() {
 
     <h2>Sauvegarde des données</h2>
     <div class="card">
-      <p class="small" style="margin-top:0">Les passages sont enregistrés <strong>sur cet appareil uniquement</strong> (dans ce navigateur).
-      Fais une sauvegarde régulièrement : elle permet aussi de transférer les données d'un appareil à l'autre.</p>
+      ${typeof Sauvegarde !== 'undefined' ? Sauvegarde.bloc() : `<p class="small" style="margin-top:0">Les passages sont enregistrés <strong>sur cet appareil uniquement</strong> (dans ce navigateur).
+      Fais une sauvegarde régulièrement : elle permet aussi de transférer les données d'un appareil à l'autre.</p>`}
       <div class="actions">
-        <button class="btn primary" data-act="export">Télécharger une sauvegarde</button>
+        ${typeof Sauvegarde !== 'undefined' ? '<button class="btn primary" data-act="partager">Envoyer ma sauvegarde (mail, Drive…)</button>' : ''}
+        <button class="btn${typeof Sauvegarde !== 'undefined' ? '' : ' primary'}" data-act="export">Télécharger une sauvegarde</button>
         <button class="btn" data-act="import">Restaurer / fusionner une sauvegarde</button>
         <button class="btn" data-act="csv">Exporter l'historique (Excel)</button>
       </div>
@@ -745,6 +746,7 @@ $('#fileImport').addEventListener('change', async e => {
   try {
     const data = JSON.parse(await f.text());
     if (!Array.isArray(data.passages)) throw new Error('format');
+    if (typeof Sauvegarde !== 'undefined') { Sauvegarde.restaurer(data); return; }
     const connus = new Set(state.passages.map(p => p.id));
     const nouveaux = data.passages.filter(p => p && p.id && p.rueId && /^\d{4}-\d{2}-\d{2}$/.test(p.date) && !connus.has(p.id));
     state.passages.push(...nouveaux);
@@ -778,7 +780,8 @@ view.addEventListener('click', e => {
   if (act) {
     const a = act.dataset.act;
     if (a === 'meteo') majMeteo(true);
-    if (a === 'export') exporterJSON();
+    if (a === 'export') (typeof Sauvegarde !== 'undefined' ? Sauvegarde.exporter() : exporterJSON());
+    if (a === 'partager' && typeof Sauvegarde !== 'undefined') Sauvegarde.envoyer();
     if (a === 'import') $('#fileImport').click();
     if (a === 'csv') exporterCSV();
     if (a === 'saveR') {

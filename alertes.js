@@ -6,7 +6,7 @@
 'use strict';
 
 const Alertes = (() => {
-  const REGLAGES = { pluie: true, vent: true, feuilles: true, nonfait: true, weekend: false }; // weekend = « rien le week-end »
+  const REGLAGES = { pluie: true, vent: true, feuilles: true, nonfait: true, sauvegarde: true, weekend: false }; // weekend = « rien le week-end »
   state.alertes = Object.assign({}, REGLAGES, state.alertes || {});
   const JOURS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
   const dow = d => new Date(toUTC(d)).getUTCDay();
@@ -70,6 +70,12 @@ const Alertes = (() => {
       const n = (state.planning || []).filter(p => p.statut === 'prevu' && p.date < today).length;
       if (n) out.push({ cle: 'nonfait', n: 0, date: today, titre: `${n} intervention${n > 1 ? 's' : ''} prévue${n > 1 ? 's' : ''} pas faite${n > 1 ? 's' : ''}`, texte: 'À valider (Fait) ou à reporter.', voir: true });
     }
+    // rappel de sauvegarde : jamais faite, ou il y a plus de 3 mois
+    if (R.sauvegarde && typeof Sauvegarde !== 'undefined' && Sauvegarde.aRappeler()) {
+      const n = Sauvegarde.joursDepuis();
+      out.push({ cle: 'sauvegarde', n: 0, date: today, classe: 'orange', pastille: 'À faire', titre: 'Pense à faire une sauvegarde',
+        texte: n == null ? 'Aucune sauvegarde faite : tes données ne sont que sur ce téléphone.' : `Dernière sauvegarde il y a ${Math.round(n / 30)} mois.`, sauve: true });
+    }
     return out.sort((a, b) => a.n - b.n);
   }
 
@@ -82,13 +88,14 @@ const Alertes = (() => {
     const L = Alertes.liste(); if (!L.length) return '';
     window.__alertes = L;
     return `<h2>À prévoir <span class="muted">(${L.length} alerte${L.length > 1 ? 's' : ''})</span></h2>` + L.map((a, i) =>
-      `<div class="al c-${Alertes.classe(a.n)}"><div class="t"><b>${esc(a.titre)}</b><span class="d">${Alertes.quand(a.n)}</span></div>
+      `<div class="al c-${a.classe || Alertes.classe(a.n)}"><div class="t"><b>${esc(a.titre)}</b><span class="d">${a.pastille || Alertes.quand(a.n)}</span></div>
         <p>${esc(a.texte)}</p>
         ${a.planning ? `<button class="btn" type="button" data-alerte-plan="${i}">Ajouter au planning</button>` : ''}
+        ${a.sauve ? '<button class="btn" type="button" data-alerte-sauve>Faire la sauvegarde</button>' : ''}
         ${a.voir ? '<button class="btn" type="button" data-alerte-voir>Voir le planning</button>' : ''}</div>`).join('');
   };
 
-  const NOMS = [['pluie', 'Pluie prévue'], ['vent', 'Vent fort prévu'], ['feuilles', 'Chute de feuilles et avaloirs'], ['nonfait', 'Intervention prévue pas faite'], ['weekend', 'Rien le week-end']];
+  const NOMS = [['pluie', 'Pluie prévue'], ['vent', 'Vent fort prévu'], ['feuilles', 'Chute de feuilles et avaloirs'], ['nonfait', 'Intervention prévue pas faite'], ['sauvegarde', 'Rappel de sauvegarde (tous les 3 mois)'], ['weekend', 'Rien le week-end']];
   window.blocReglagesAlertes = function () {
     return `<h2>Alertes</h2><div class="card"><p class="muted small" style="margin-top:0">Elles s'affichent en haut de Priorités quand tu ouvres l'appli. Si rien n'est à signaler, rien ne s'affiche.</p>
       ${NOMS.map(([k, t]) => `<div class="tg"><span>${t}</span><button type="button" class="sw${state.alertes[k] ? ' on' : ''}" role="switch" aria-checked="${!!state.alertes[k]}" aria-label="${t}" data-alerte-reg="${k}"></button></div>`).join('')}</div>`;
@@ -97,6 +104,7 @@ const Alertes = (() => {
   document.getElementById('view').addEventListener('click', e => {
     const r = e.target.closest('[data-alerte-reg]');
     if (r) { const k = r.dataset.alerteReg; state.alertes[k] = !state.alertes[k]; persist(); rendre(); return; }
+    if (e.target.closest('[data-alerte-sauve]') && typeof Sauvegarde !== 'undefined') { Sauvegarde.envoyer(); return; }
     const g = e.target.closest('[data-alerte-plan]');
     if (g) { const a = (window.__alertes || [])[+g.dataset.alertePlan]; if (a && a.planning && typeof ouvrirSaisie === 'function') ouvrirSaisie({ mode: 'prevu', rueIds: a.planning.rues, inter: a.planning.inter, date: a.planning.date }); return; }
     if (e.target.closest('[data-alerte-voir]')) {
