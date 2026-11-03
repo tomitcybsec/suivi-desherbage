@@ -194,7 +194,7 @@ const Feuilles = (() => {
     const p = Feuilles.previsions();
     const n = p.maintenant.length, s = p.semaines[0];
     const texte = n ? `<strong>${n} rue${n > 1 ? 's' : ''} à ramasser maintenant</strong> (feuilles)` : s ? `Feuilles : prochaine semaine à prévoir, du ${fmtJour(s.lundi)} au ${fmtJour(s.vendredi)}` : 'Feuilles : rien à prévoir sur 15 jours';
-    return `<div class="notice${n ? ' warn' : ''}">${texte} <button class="btn" type="button" data-feuilles-voir style="margin-top:6px">Voir les feuilles</button></div>`;
+    return `<div class="notice${n ? ' warn' : ''}">${texte} <button class="btn" type="button" data-feuilles-voir style="margin-top:6px">Voir dans Suivi &gt; Feuilles</button></div>`;
   };
   window.vueFeuilles = function () { return window.blocFeuilles() || '<div class="notice">Aucune rue avec arbres. Ouvre la fiche d\'une rue et coche « Rue avec arbres ».</div>'; };
   document.getElementById('view').addEventListener('click', e => {
