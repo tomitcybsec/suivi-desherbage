@@ -115,13 +115,16 @@ const Feuilles = (() => {
       while (bloc.has(lundiDe(d))) d = addJours(lundiDe(d), 7);
       return d;
     };
+    // sous-secteurs : une seule sorte d'opération par semaine (ramassage OU rotofil) dans chaque sous-secteur
+    const occ = typeof SousSecteurs !== 'undefined' ? SousSecteurs.occupation() : null;
     const ajouter = (id, d0) => {
       let d = apresBlocage(id, d0), w = dow(d);
       if (w === 6) d = addJours(d, -1); else if (w === 0) d = addJours(d, -2); // week-end : on agit avant, le vendredi
       if (d < today) d = today;
       d = apresBlocage(id, d);
       w = dow(d);
-      const lundi = addJours(d, -((w + 6) % 7));
+      let lundi = addJours(d, -((w + 6) % 7));
+      if (occ) { const l2 = SousSecteurs.premierLibre(occ, id, lundi, 'ramassage'); if (l2 !== lundi) { lundi = l2; d = l2; } }
       const g = sem.get(lundi) || { lundi, vendredi: addJours(lundi, 4), premier: d, ids: [] };
       if (d < g.premier) g.premier = d;
       g.ids.push(id); sem.set(lundi, g);
@@ -130,7 +133,8 @@ const Feuilles = (() => {
       if (stoppee(id)) return;
       const s = statut(id);
       if (s.etat === 'afaire') {
-        if (apresBlocage(id, today) === today) maintenant.push(id); else ajouter(id, today);
+        const libreCetteSemaine = !occ || SousSecteurs.libre(occ, id, lundiDe(today), 'ramassage');
+        if (apresBlocage(id, today) === today && libreCetteSemaine) maintenant.push(id); else ajouter(id, today);
         return;
       }
       if (!s.echeance || ecartJours(today, s.echeance) > 15) return;
@@ -174,6 +178,13 @@ const Feuilles = (() => {
     const dates = [...new Set(l.map(id => m[id]))].sort().map(d => `${JOURS_COURTS[new Date(toUTC(d)).getUTCDay()]} ${fmtJM(d)}`);
     return `<div class="small"><strong>Déjà prévu ${dates.join(', ')}</strong> (${l.length} rue${l.length > 1 ? 's' : ''} sur ${ids.length})</div>`;
   }
+  // « Nord 5 · Sud 3 » : combien de rues de la carte sont dans chaque sous-secteur
+  function repartition(ids) {
+    if (typeof SousSecteurs === 'undefined') return '';
+    const c = {}; ids.forEach(id => { const ss = SousSecteurs.de(id); if (ss) c[ss] = (c[ss] || 0) + 1; });
+    const t = Object.entries(c).map(([k, n]) => `${k} ${n}`).join(' · ');
+    return t ? `<div class="small muted">Sous-secteurs : ${t}</div>` : '';
+  }
   const delaiTexte = n => n <= 0 ? "aujourd'hui" : n === 1 ? 'demain' : `dans ${n} jours`;
   function blocPrevision() {
     const p = Feuilles.previsions();
@@ -181,7 +192,7 @@ const Feuilles = (() => {
     if (p.maintenant.length) h += `<div class="fprev c-rouge"><div class="fp-tete"><b>À ramasser maintenant</b><span class="fp-delai">aujourd'hui</span></div>
       <div>Prévoir coordonné ou pompage</div><div class="small">${nomsGroupes(p.maintenant).map(esc).join(', ')}</div></div>`;
     h += p.semaines.map(s => `<div class="fprev c-${s.classe}"><div class="fp-tete"><b>Semaine du ${fmtJour(s.lundi)} au ${fmtJour(s.vendredi)}</b><span class="fp-delai">${delaiTexte(s.delta)}</span></div>
-      <div>Prévoir coordonné ou pompage</div><div class="small">${nomsGroupes(s.ids).map(esc).join(', ')}</div>${dejaTexte(s.ids)}
+      <div>Prévoir coordonné ou pompage</div><div class="small">${nomsGroupes(s.ids).map(esc).join(', ')}</div>${repartition(s.ids)}${dejaTexte(s.ids)}
       ${Feuilles.modeSimple() ? '' : `<div class="muted small">Estimation · fiabilité : ${s.confiance}</div>`}
       <button class="btn" type="button" data-fplan="${s.lundi}" style="margin-top:8px">Ajouter au planning</button></div>`).join('');
     if (!p.maintenant.length && !p.semaines.length) h += '<p class="muted small" style="margin:0 0 8px">Rien à prévoir sur les 15 prochains jours (estimation).</p>';
