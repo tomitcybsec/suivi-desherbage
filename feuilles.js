@@ -100,19 +100,41 @@ const Feuilles = (() => {
   // prévision sur 15 jours, regroupée par semaine de travail (lundi → vendredi)
   function previsions() {
     const today = aujourdhui(), sem = new Map(), maintenant = [];
-    rues().forEach(id => {
-      if (stoppee(id)) return;
-      const s = statut(id);
-      if (s.etat === 'afaire') { maintenant.push(id); return; }
-      if (!s.echeance || ecartJours(today, s.echeance) > 15) return;
-      let d = s.echeance, w = new Date(toUTC(d)).getUTCDay();
+    const dow = d => new Date(toUTC(d)).getUTCDay();
+    const lundiDe = d => addJours(d, -((dow(d) + 6) % 7));
+    // une rue ne peut avoir qu'un passage par semaine (moyens du service) : on bloque les semaines déjà prises
+    // par un ramassage fait ou déjà prévu au planning ; la proposition passe au lundi suivant
+    const pris = {};
+    (state.planning || []).forEach(p => {
+      if (p.statut !== 'prevu' || !estRamassage(p.type, `${p.intervention} ${p.materiel}`)) return;
+      (p.rueIds || []).forEach(id => { (pris[id] = pris[id] || new Set()).add(lundiDe(p.date)); });
+    });
+    const apresBlocage = (id, d) => {
+      const bloc = pris[id] || new Set(), der = dernier(id);
+      if (der) bloc.add(lundiDe(der));
+      while (bloc.has(lundiDe(d))) d = addJours(lundiDe(d), 7);
+      return d;
+    };
+    const ajouter = (id, d0) => {
+      let d = apresBlocage(id, d0), w = dow(d);
       if (w === 6) d = addJours(d, -1); else if (w === 0) d = addJours(d, -2); // week-end : on agit avant, le vendredi
       if (d < today) d = today;
-      w = new Date(toUTC(d)).getUTCDay();
+      d = apresBlocage(id, d);
+      w = dow(d);
       const lundi = addJours(d, -((w + 6) % 7));
       const g = sem.get(lundi) || { lundi, vendredi: addJours(lundi, 4), premier: d, ids: [] };
       if (d < g.premier) g.premier = d;
       g.ids.push(id); sem.set(lundi, g);
+    };
+    rues().forEach(id => {
+      if (stoppee(id)) return;
+      const s = statut(id);
+      if (s.etat === 'afaire') {
+        if (apresBlocage(id, today) === today) maintenant.push(id); else ajouter(id, today);
+        return;
+      }
+      if (!s.echeance || ecartJours(today, s.echeance) > 15) return;
+      ajouter(id, s.echeance);
     });
     const classe = delta => delta <= 0 ? 'rouge' : delta <= 3 ? 'orange' : delta <= 10 ? 'jaune' : 'bleu';
     const confiance = delta => delta <= 5 ? 'assez fiable' : delta <= 10 ? 'probable' : 'à confirmer';

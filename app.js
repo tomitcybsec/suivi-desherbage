@@ -3,7 +3,7 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.9.29';
+const VERSION = '1.9.32';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
 const WX_MAX_AGE_MS = 3 * 3600 * 1000; // on actualise la météo toutes les 3 h au plus
@@ -258,6 +258,7 @@ function coefRue(rue, ps) {
   return { coef, n };
 }
 
+const INTERVALLE_MIN = 21; // jours minimum entre deux passages d'herbe sur une même rue
 function statutRue(rue) {
   if (cacheStatut.has(rue.id)) return cacheStatut.get(rue.id);
   const ps = passagesDe(rue.id), today = aujourdhui();
@@ -276,9 +277,13 @@ function statutRue(rue) {
       acc += unitesJour(d);
       if (acc >= seuil) { echeance = d; break; }
     }
+    // on ne peut pas repasser avant 3 semaines sur une même rue (moyens du service) : la date proposée ne descend pas sous ce délai
+    const permis = addJours(dernier.date, INTERVALLE_MIN);
+    if (echeance && echeance < permis) echeance = permis;
     const jours = echeance ? ecartJours(today, echeance) : null;
     let statut = 'ok';
-    if (pct >= 1) statut = 'retard';
+    if (pct >= 1 && today >= permis) statut = 'retard';
+    else if (pct >= 1) statut = jours != null && jours <= 7 ? 'semaine' : 'quinzaine'; // en attente du délai minimum
     else if (jours != null && jours <= 7) statut = 'semaine';
     else if (jours != null && jours <= 15) statut = 'quinzaine';
     const prevFiable = echeance ? (meteo.jours[echeance] ? 'prevision' : 'normale') : null;
@@ -374,6 +379,24 @@ function blocCinqAFaire() {
   return h + `<div class="list">${L.map(({ rue, raisons }) => `<div>${ligneRue(rue)}<div class="muted small" style="padding:4px 14px 0">${raisons.map(esc).join(' · ')}</div></div>`).join('')}</div>`;
 }
 
+// bandeau météo en haut de l'Accueil : température moyenne et pluie des 5 prochains jours travaillés, pousse de l'herbe
+function blocMeteo(pousse) {
+  const today = aujourdhui(), jours = [];
+  for (let k = 0; jours.length < 5 && k < 14; k++) {
+    const d = addJours(today, k), w = new Date(toUTC(d)).getUTCDay();
+    if (w !== 0 && w !== 6) jours.push({ d, j: jourMeteo(d) });
+  }
+  if (!jours.length) return '';
+  const tm = jours.reduce((s, x) => s + (x.j.tmax + x.j.tmin) / 2, 0) / jours.length;
+  const mm = jours.reduce((s, x) => s + (x.j.pluie || 0), 0);
+  const estime = jours.some(x => x.j.source === 'normale');
+  const motPluie = mm < 2 ? 'Pas de pluie' : mm < 10 ? 'Peu de pluie' : mm < 25 ? 'Pluie modérée' : 'Beaucoup de pluie';
+  const motPousse = pousse === 'faible' ? 'peu' : pousse === 'moyenne' ? 'moyennement' : 'beaucoup';
+  return `<div class="met"><div class="l1"><span class="big">${Math.round(tm)} <small>°C en moyenne</small></span><span class="pl">${motPluie}</span></div>
+    <div class="l2">5 prochains jours travaillés · l'herbe pousse <strong>${motPousse}</strong>${estime ? ' <span class="muted small">(estimation)</span>' : ''}</div>
+    <div class="jours">${jours.map(({ d, j }) => `<div>${JOURS_COURTS[new Date(toUTC(d)).getUTCDay()]}<b>${Math.round(j.tmax)}°</b>${(j.pluie || 0) >= 2 || (j.proba != null && j.proba >= 60) ? '<i>pluie</i>' : ''}</div>`).join('')}</div></div>`;
+}
+
 function rendrePriorites() {
   const rues = secteur()?.rues || [];
   const groupes = { retard: [], semaine: [], quinzaine: [], ok: [], inconnu: [] };
@@ -392,7 +415,7 @@ function rendrePriorites() {
   const uj = u / 7;
   const pousse = uj < 3 ? 'faible' : uj < 9 ? 'moyenne' : 'forte';
 
-  let html = '';
+  let html = blocMeteo(pousse);
   if (!state.passages.length) {
     html += `<div class="notice"><strong>Pour démarrer :</strong> appuie sur <strong>+ Saisir</strong> en bas de l'écran pour noter ce qui a été fait ou ce que tu prévois. Pour plusieurs rues d'un coup, coche-les dans l'onglet <strong>Rues</strong> puis appuie sur <strong>Saisir</strong>. Tu peux aussi importer ton tableau Excel depuis l'onglet <strong>Suivi</strong>. L'appli calculera ensuite toute seule quand y retourner.</div>`;
   }
@@ -401,9 +424,12 @@ function rendrePriorites() {
   }
   if (typeof blocAlertes === 'function') html += blocAlertes();
   html += blocCinqAFaire();
-  html += `<div class="resume">${['retard', 'semaine', 'quinzaine'].map(k => `<button class="${k}" data-goto="${k}"><b>${groupes[k].length}</b><span>${k === 'retard' ? 'en retard' : k === 'semaine' ? 'cette semaine' : 'sous 15 jours'}</span></button>`).join('')}</div>`;
+  const tousZero = ['retard', 'semaine', 'quinzaine'].every(k => !groupes[k].length);
+  html += `<h3 class="herbe-titre">Herbe</h3>`;
+  html += tousZero
+    ? `<div class="herbe-ok"><b>Tout est bon.</b> Rien à faire dans les 15 jours.</div>`
+    : `<div class="resume">${['retard', 'semaine', 'quinzaine'].map(k => `<button class="${k}" data-goto="${k}"><b>${groupes[k].length}</b><span>${k === 'retard' ? 'en retard' : k === 'semaine' ? 'cette semaine' : 'sous 15 jours'}</span></button>`).join('')}</div>`;
   html += `<p class="resume-2">${groupes.ok.length} à jour${groupes.inconnu.length ? ` · <button data-goto="inconnu">${groupes.inconnu.length} jamais saisie${groupes.inconnu.length > 1 ? 's' : ''}</button>` : ''}</p>`;
-  html += `<p class="meteo-ligne">Météo 7 jours : ${virgule(tm / 7)} °C · ${virgule(pluie)} mm · pousse ${pousse}${nObs < 7 ? ` <span>(${7 - nObs} j estimé${7 - nObs > 1 ? 's' : ''} sur moyennes)</span>` : ''}</p>`;
   if (typeof blocPlanning === 'function') html += blocPlanning();
   if (typeof blocFeuillesResume === 'function') html += blocFeuillesResume();
 
@@ -507,10 +533,11 @@ function rendreReglages() {
 
     <h2>Sauvegarde des données</h2>
     <div class="card">
-      <p class="small" style="margin-top:0">Les passages sont enregistrés <strong>sur cet appareil uniquement</strong> (dans ce navigateur).
-      Fais une sauvegarde régulièrement : elle permet aussi de transférer les données d'un appareil à l'autre.</p>
+      ${typeof Sauvegarde !== 'undefined' ? Sauvegarde.bloc() : `<p class="small" style="margin-top:0">Les passages sont enregistrés <strong>sur cet appareil uniquement</strong> (dans ce navigateur).
+      Fais une sauvegarde régulièrement : elle permet aussi de transférer les données d'un appareil à l'autre.</p>`}
       <div class="actions">
-        <button class="btn primary" data-act="export">Télécharger une sauvegarde</button>
+        ${typeof Sauvegarde !== 'undefined' ? '<button class="btn primary" data-act="partager">Envoyer ma sauvegarde (mail, Drive…)</button>' : ''}
+        <button class="btn${typeof Sauvegarde !== 'undefined' ? '' : ' primary'}" data-act="export">Télécharger une sauvegarde</button>
         <button class="btn" data-act="import">Restaurer / fusionner une sauvegarde</button>
         <button class="btn" data-act="csv">Exporter l'historique (Excel)</button>
       </div>
@@ -719,6 +746,7 @@ $('#fileImport').addEventListener('change', async e => {
   try {
     const data = JSON.parse(await f.text());
     if (!Array.isArray(data.passages)) throw new Error('format');
+    if (typeof Sauvegarde !== 'undefined') { Sauvegarde.restaurer(data); return; }
     const connus = new Set(state.passages.map(p => p.id));
     const nouveaux = data.passages.filter(p => p && p.id && p.rueId && /^\d{4}-\d{2}-\d{2}$/.test(p.date) && !connus.has(p.id));
     state.passages.push(...nouveaux);
@@ -752,7 +780,8 @@ view.addEventListener('click', e => {
   if (act) {
     const a = act.dataset.act;
     if (a === 'meteo') majMeteo(true);
-    if (a === 'export') exporterJSON();
+    if (a === 'export') (typeof Sauvegarde !== 'undefined' ? Sauvegarde.exporter() : exporterJSON());
+    if (a === 'partager' && typeof Sauvegarde !== 'undefined') Sauvegarde.envoyer();
     if (a === 'import') $('#fileImport').click();
     if (a === 'csv') exporterCSV();
     if (a === 'saveR') {
