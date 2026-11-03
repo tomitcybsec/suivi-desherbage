@@ -235,7 +235,7 @@
 
   /* ---------- Barre « + Saisir » ---------- */
   const fab = $('#fabSaisir');
-  function majFab() { fab.hidden = onglet === 'reglages' || !$('#selbar').hidden; }
+  function majFab() { fab.hidden = onglet === 'reglages' || onglet === 'carnet' || !$('#selbar').hidden; }
   new MutationObserver(majFab).observe($('#selbar'), { attributes: true });
   document.querySelector('nav.tabs').addEventListener('click', () => setTimeout(majFab));
   fab.addEventListener('click', () => ouvrir({ mode: 'fait' }));

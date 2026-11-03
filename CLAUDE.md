@@ -25,7 +25,8 @@
 | `alertes.js` | Alertes à l'ouverture (haut de Priorités) : pluie, vent, chute de feuilles, avaloirs, interventions pas faites ; interrupteurs dans Réglages |
 | `herbe.js` | Prévision de l'herbe par semaine (Suivi > Herbe), « déjà prévu » (rues déjà au planning) |
 | `sauvegarde.js` | Sauvegarde complète (JSON : passages, planning, tableau importé, réglages), envoi par le partage d'Android, restauration par fusion, rappel tous les 3 mois |
-| `tableau.js` | Import du tableau Excel (lecture locale avec `xlsx.full.min.js`), récap par rue, journal |
+| `carnet.js` | Onglet Carnet : contacts (service/fonction, appel, SMS, e-mail, itinéraire), notes rangées par date, recherche ; données locales, incluses dans la sauvegarde (case à cocher) |
+| `tableau.js` | Import du tableau Excel (lecture locale avec `xlsx.full.min.js`), Récap (par rue ou par date, avec recherche), interventions du tableau + celles faites dans l'appli |
 | `dictee.js` | Moteur de reconnaissance des noms de rues dans un texte libre (utilisé par l'import Excel). L'interface de dictée vocale a été **abandonnée** à sa demande. |
 | `sw.js`, `manifest.webmanifest`, `icon-*.png` | Installation comme application, mode hors ligne |
 
