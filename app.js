@@ -3,7 +3,7 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.9.30';
+const VERSION = '1.9.31';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
 const WX_MAX_AGE_MS = 3 * 3600 * 1000; // on actualise la météo toutes les 3 h au plus
@@ -379,6 +379,24 @@ function blocCinqAFaire() {
   return h + `<div class="list">${L.map(({ rue, raisons }) => `<div>${ligneRue(rue)}<div class="muted small" style="padding:4px 14px 0">${raisons.map(esc).join(' · ')}</div></div>`).join('')}</div>`;
 }
 
+// bandeau météo en haut de l'Accueil : température moyenne et pluie des 5 prochains jours travaillés, pousse de l'herbe
+function blocMeteo(pousse) {
+  const today = aujourdhui(), jours = [];
+  for (let k = 0; jours.length < 5 && k < 14; k++) {
+    const d = addJours(today, k), w = new Date(toUTC(d)).getUTCDay();
+    if (w !== 0 && w !== 6) jours.push({ d, j: jourMeteo(d) });
+  }
+  if (!jours.length) return '';
+  const tm = jours.reduce((s, x) => s + (x.j.tmax + x.j.tmin) / 2, 0) / jours.length;
+  const mm = jours.reduce((s, x) => s + (x.j.pluie || 0), 0);
+  const estime = jours.some(x => x.j.source === 'normale');
+  const motPluie = mm < 2 ? 'Pas de pluie' : mm < 10 ? 'Peu de pluie' : mm < 25 ? 'Pluie modérée' : 'Beaucoup de pluie';
+  const motPousse = pousse === 'faible' ? 'peu' : pousse === 'moyenne' ? 'moyennement' : 'beaucoup';
+  return `<div class="met"><div class="l1"><span class="big">${Math.round(tm)} <small>°C en moyenne</small></span><span class="pl">${motPluie}</span></div>
+    <div class="l2">5 prochains jours travaillés · l'herbe pousse <strong>${motPousse}</strong>${estime ? ' <span class="muted small">(estimation)</span>' : ''}</div>
+    <div class="jours">${jours.map(({ d, j }) => `<div>${JOURS_COURTS[new Date(toUTC(d)).getUTCDay()]}<b>${Math.round(j.tmax)}°</b>${(j.pluie || 0) >= 2 || (j.proba != null && j.proba >= 60) ? '<i>pluie</i>' : ''}</div>`).join('')}</div></div>`;
+}
+
 function rendrePriorites() {
   const rues = secteur()?.rues || [];
   const groupes = { retard: [], semaine: [], quinzaine: [], ok: [], inconnu: [] };
@@ -397,7 +415,7 @@ function rendrePriorites() {
   const uj = u / 7;
   const pousse = uj < 3 ? 'faible' : uj < 9 ? 'moyenne' : 'forte';
 
-  let html = '';
+  let html = blocMeteo(pousse);
   if (!state.passages.length) {
     html += `<div class="notice"><strong>Pour démarrer :</strong> appuie sur <strong>+ Saisir</strong> en bas de l'écran pour noter ce qui a été fait ou ce que tu prévois. Pour plusieurs rues d'un coup, coche-les dans l'onglet <strong>Rues</strong> puis appuie sur <strong>Saisir</strong>. Tu peux aussi importer ton tableau Excel depuis l'onglet <strong>Suivi</strong>. L'appli calculera ensuite toute seule quand y retourner.</div>`;
   }
@@ -412,7 +430,6 @@ function rendrePriorites() {
     ? `<div class="herbe-ok"><b>Tout est bon.</b> Rien à faire dans les 15 jours.</div>`
     : `<div class="resume">${['retard', 'semaine', 'quinzaine'].map(k => `<button class="${k}" data-goto="${k}"><b>${groupes[k].length}</b><span>${k === 'retard' ? 'en retard' : k === 'semaine' ? 'cette semaine' : 'sous 15 jours'}</span></button>`).join('')}</div>`;
   html += `<p class="resume-2">${groupes.ok.length} à jour${groupes.inconnu.length ? ` · <button data-goto="inconnu">${groupes.inconnu.length} jamais saisie${groupes.inconnu.length > 1 ? 's' : ''}</button>` : ''}</p>`;
-  html += `<p class="meteo-ligne">Météo 7 jours : ${virgule(tm / 7)} °C · ${virgule(pluie)} mm · pousse ${pousse}${nObs < 7 ? ` <span>(${7 - nObs} j estimé${7 - nObs > 1 ? 's' : ''} sur moyennes)</span>` : ''}</p>`;
   if (typeof blocPlanning === 'function') html += blocPlanning();
   if (typeof blocFeuillesResume === 'function') html += blocFeuillesResume();
 
