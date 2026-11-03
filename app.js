@@ -3,7 +3,7 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.9.35';
+const VERSION = '1.9.37';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
 const WX_MAX_AGE_MS = 3 * 3600 * 1000; // on actualise la météo toutes les 3 h au plus
@@ -565,7 +565,7 @@ function rendreReglages() {
 function rendre() {
   majPill();
   document.querySelectorAll('nav.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === onglet)));
-  ({ priorites: rendrePriorites, rues: rendreRues, historique: () => (typeof rendreSuivi === 'function' ? rendreSuivi() : rendreHistorique()), reglages: rendreReglages })[onglet]();
+  ({ priorites: rendrePriorites, rues: rendreRues, historique: () => (typeof rendreSuivi === 'function' ? rendreSuivi() : rendreHistorique()), carnet: () => (typeof rendreCarnet === 'function' ? rendreCarnet() : rendrePriorites()), reglages: rendreReglages })[onglet]();
   if (onglet !== 'rues') $('#selbar').hidden = true;
 }
 

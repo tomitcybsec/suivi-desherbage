@@ -240,25 +240,38 @@ if (typeof document !== 'undefined' && document.getElementById('view')) (() => {
 
   function vueRecap() {
     const L = toutes(), today = aujourdhui();
-    if (!L.length) return `<div class="notice">Rien à afficher pour l'instant : aucune intervention faite ni tableau importé. <button class="btn" data-act="importTableau">Importer mon tableau de suivi</button></div>`;
-    const rows = recap();
+    if (!L.length) return q ? '<p class="muted small">Aucune intervention trouvée.</p>' : `<div class="notice">Rien à afficher pour l'instant : aucune intervention faite ni tableau importé. <button class="btn" data-act="importTableau">Importer mon tableau de suivi</button></div>`;
     const parType = {};
     L.filter(l => l.statut === 'realise' && l.date <= today).forEach(l => { parType[TYPES_COURTS(l.type)] = (parType[TYPES_COURTS(l.type)] || 0) + 1; });
     const prevuPasses = L.filter(l => l.statut === 'prevu' && l.date < today);
     let h = '';
     if (prevuPasses.length) h += `<div class="notice warn"><strong>À mettre à jour dans le tableau :</strong> ${prevuPasses.map(l => `n°${esc(l.n ?? '?')} (${fmtJM(l.date)}, ${esc(l.type || 'intervention')})`).join(', ')} — encore « Prévu » alors que la date est passée.</div>`;
     h += `<p class="muted small" style="margin:0 0 8px">Interventions réalisées par type : ${Object.entries(parType).map(([t, n]) => `${esc(t)} ${n}`).join(' · ') || 'aucune'}</p>`;
-    h += `<div class="list">${rows.map(x => {
+    h += `<div class="seg" style="margin:0 0 8px"><button class="btn${ui.recapMode !== 'date' ? ' primary' : ''}" data-recap="rue">Par rue</button><button class="btn${ui.recapMode === 'date' ? ' primary' : ''}" data-recap="date">Par date</button></div>
+      <input class="q" id="recapQ" type="search" placeholder="Rechercher une rue, un agent, un type…" value="${esc(ui.recapQ || '')}">
+      ${ui.recapMode === 'date' ? '' : `<label class="f" style="margin-bottom:8px">Trier par<select id="recapTri"><option value="dernier"${ui.recapTri !== 'nb' && ui.recapTri !== 'nom' ? ' selected' : ''}>Dernier passage</option><option value="nb"${ui.recapTri === 'nb' ? ' selected' : ''}>Nombre de passages</option><option value="nom"${ui.recapTri === 'nom' ? ' selected' : ''}>Nom de la rue</option></select></label>`}
+      <div id="recapListe">${listeRecap()}</div>`;
+    return h;
+  }
+
+  // liste du Récap : une ligne par rue, ou (« Par date ») une ligne par intervention
+  function listeRecap() {
+    const q = ui.recapQ || '';
+    if (ui.recapMode === 'date') return vueJournal(q);
+    const rows = recap().filter(x => !q || Dictee.norm(`${x.nom} ${Object.keys(x.types).join(' ')}`).includes(Dictee.norm(q)));
+    if (ui.recapTri === 'nb') rows.sort((a, b) => b.n - a.n || a.nom.localeCompare(b.nom, 'fr'));
+    else if (ui.recapTri === 'nom') rows.sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+    if (!rows.length) return `<p class="muted small">Aucune rue trouvée.</p>`;
+    return `<div class="list">${rows.map(x => {
       const meta = [`${x.n} passage${x.n > 1 ? 's' : ''}`, x.dernier ? `dernier le ${fmtJM(x.dernier)}` : 'aucun réalisé', x.rotofil ? `rotofil le ${fmtJM(x.rotofil)}` : null, x.poches ? `${x.poches} poche${x.poches > 1 ? 's' : ''}` : null].filter(Boolean).join(' · ');
       return `<div class="rue" ${x.rueId ? `data-rue="${x.rueId}" role="button" tabindex="0"` : ''}>
         <div class="main"><div class="nom">${esc(x.nom)}</div><div class="meta">${meta}</div></div>
         <div class="right">${x.encours ? '<span class="chip">Récurrent</span>' : (x.rueId ? '' : '<span class="muted small">zone</span>')}</div></div>`;
     }).join('')}</div>`;
-    return h;
   }
 
-  function vueJournal() {
-    const L = toutes().sort((a, b) => b.date.localeCompare(a.date) || (b.n ?? 0) - (a.n ?? 0));
+  function vueJournal(q = '') {
+    const L = toutes().filter(l => !q || Dictee.norm(`${l.lieu} ${l.type} ${l.agents} ${l.intervention} ${l.materiel} ${l.observations}`).includes(Dictee.norm(q))).sort((a, b) => b.date.localeCompare(a.date) || (b.n ?? 0) - (a.n ?? 0));
     if (!L.length) return `<div class="notice">Rien à afficher pour l'instant : aucune intervention faite ni tableau importé. <button class="btn" data-act="importTableau">Importer mon tableau de suivi</button></div>`;
     return `<div class="hist-box">${L.map(l => {
       const st = l.statut === 'realise' ? '' : ` · <strong>${esc(STATUTS_TXT[l.statut] || l.statutTexte)}</strong>`;
@@ -273,14 +286,15 @@ if (typeof document !== 'undefined' && document.getElementById('view')) (() => {
   }
 
   window.rendreSuivi = function () {
-    const vues = { planning: 'Planning', recap: 'Récap', journal: 'Journal', passages: 'Herbe', feuilles: 'Feuilles' };
+    const vues = { planning: 'Planning', recap: 'Récap', passages: 'Herbe', feuilles: 'Feuilles' };
+    if (ui.suiviVue === 'journal') { ui.suiviVue = 'recap'; ui.recapMode = 'date'; } // l'ancien onglet Journal est devenu « Récap > Par date »
     const imp = state.importTableau;
     const tete = `<div class="seg">
       ${Object.entries(vues).map(([k, t]) => `<button class="btn${ui.suiviVue === k ? ' primary' : ''}" data-suivi="${k}">${t}</button>`).join('')}
       </div>
       <p class="muted small" style="margin:-4px 0 12px">${imp ? `Tableau « ${esc(imp.fichier)} » importé le ${new Date(imp.le).toLocaleDateString('fr-FR')} à ${new Date(imp.le).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}. ` : ''}<button class="btn" data-act="importTableau">${imp ? 'Réimporter le tableau' : 'Importer mon tableau de suivi'}</button></p>`;
     if (ui.suiviVue === 'passages') { rendreHistorique(); view.insertAdjacentHTML('afterbegin', tete + (typeof blocHerbePrevision === 'function' ? blocHerbePrevision() : '')); return; }
-    view.innerHTML = tete + (ui.suiviVue === 'planning' && typeof vuePlanning === 'function' ? vuePlanning() : ui.suiviVue === 'feuilles' && typeof vueFeuilles === 'function' ? vueFeuilles() : ui.suiviVue === 'journal' ? vueJournal() : vueRecap());
+    view.innerHTML = tete + (ui.suiviVue === 'planning' && typeof vuePlanning === 'function' ? vuePlanning() : ui.suiviVue === 'feuilles' && typeof vueFeuilles === 'function' ? vueFeuilles() : vueRecap());
   };
 
   // interventions du tableau pour une rue (affichées dans sa fiche)
@@ -288,7 +302,17 @@ if (typeof document !== 'undefined' && document.getElementById('view')) (() => {
     return state.interventions.filter(l => l.rueIds.includes(rueId)).sort((a, b) => b.date.localeCompare(a.date));
   };
 
+  view.addEventListener('input', e => {
+    if (e.target.id !== 'recapQ') return;
+    ui.recapQ = e.target.value; document.getElementById('recapListe').innerHTML = listeRecap();
+  });
+  view.addEventListener('change', e => {
+    if (e.target.id !== 'recapTri') return;
+    ui.recapTri = e.target.value; document.getElementById('recapListe').innerHTML = listeRecap();
+  });
   view.addEventListener('click', e => {
+    const rm = e.target.closest('[data-recap]');
+    if (rm) { ui.recapMode = rm.dataset.recap; rendre(); return; }
     const b = e.target.closest('[data-suivi]');
     if (b) { ui.suiviVue = b.dataset.suivi; rendre(); return; }
     if (e.target.closest('[data-act="importTableau"]')) input.click();

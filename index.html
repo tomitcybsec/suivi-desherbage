@@ -17,7 +17,7 @@
   --bg:#efeeea; --surface:#ffffff; --surface2:#f6f5f2; --text:#1c1c1c; --muted:#55575a; --line:#d6d4cd;
   --head:#202326; --head-ink:#ffffff; --head-muted:#b9bdc2;
   --accent:#f2c200; --accent-ink:#1c1c1c; --focus:#1c1c1c;
-  --retard:#b3261e; --retard-ink:#ffffff; --vert:#2e7d32; --vert-clair:#e3f1e4;
+  --retard:#b3261e; --retard-ink:#ffffff; --vert:#2e7d32; --vert-clair:#e3f1e4; --vert-ink:#ffffff;
   --semaine:#1c1c1c; --quinzaine:#1c1c1c; --ok:#55575a; --inconnu:#8a8c8f;
   /* touche Toulouse (violet) — ne remplace PAS --accent, qui reste le jaune de l'action principale */
   --toulouse:#6b3fa0; --toulouse-clair:#dccfec; --mortier:rgba(255,255,255,.32);
@@ -28,7 +28,7 @@
     --bg:#14181d; --surface:#1d232a; --surface2:#25292c; --text:#ecebe7; --muted:#a4a8ad; --line:#363a3e;
     --head:#0e1215; --head-ink:#ffffff; --head-muted:#9ca1a6;
     --accent:#f2c200; --accent-ink:#1c1c1c; --focus:#f2c200;
-    --retard:#e5534b; --retard-ink:#ffffff; --vert:#5dbb63; --vert-clair:#1f3322;
+    --retard:#e5534b; --retard-ink:#ffffff; --vert:#5dbb63; --vert-clair:#1f3322; --vert-ink:#0c1a0d;
     --semaine:#ecebe7; --quinzaine:#ecebe7; --ok:#a4a8ad; --inconnu:#7d8186;
     --toulouse:#c9a7f0; --toulouse-clair:#3a2f4c; --mortier:rgba(20,10,40,.28);
     --c5:#c9a7f0; --c4:#a98bd6; --c3:#e0866a; --c2:#c98f79; --c1:#a8857a; --c0:#7e6d66;
@@ -257,6 +257,21 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 .met .jours div{text-align:center;border:1px solid var(--line);padding:5px 2px;font-size:13px}
 .met .jours b{display:block;font-size:18px}
 .met .jours i{display:block;font-style:normal;font-size:12px;color:var(--pc-bleu);font-weight:700}
+
+/* Carnet : contacts et notes */
+.ct{background:var(--surface);border:1px solid var(--line);padding:12px 14px;margin-bottom:8px}
+.ct .svc{font-size:13px;font-weight:700;color:var(--toulouse);text-transform:uppercase;letter-spacing:.4px}
+.ct .nm{font-size:19px;font-weight:700;margin:2px 0}
+.ct .tl{font-size:17px}
+.ct .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.ct .acts .btn{flex:1;text-align:center;padding:10px 6px;text-decoration:none;min-width:80px}
+.ct .acts a.appel{background:var(--vert);color:var(--vert-ink) !important;border-color:var(--vert)}
+.nt{background:var(--surface);border:1px solid var(--line);border-left:6px solid var(--toulouse);padding:10px 14px;margin-bottom:8px;cursor:pointer}
+.nt .dt{font-size:13px;color:var(--muted);font-weight:700}
+.nt p{margin:4px 0 0;font-size:16px}
+.grp{font-size:14px;font-weight:700;color:var(--muted);margin:14px 0 6px;text-transform:uppercase;letter-spacing:.4px}
+input.q{width:100%;padding:12px;font-size:16px;border:1px solid var(--line);background:var(--surface);color:var(--text);margin-bottom:10px;box-sizing:border-box}
+nav.tabs button{padding-left:2px;padding-right:2px}
 </style>
 </head>
 <body>
@@ -277,6 +292,7 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
       <button role="tab" data-tab="priorites" aria-selected="true">Accueil</button>
       <button role="tab" data-tab="rues" aria-selected="false">Rues</button>
       <button role="tab" data-tab="historique" aria-selected="false">Suivi</button>
+      <button role="tab" data-tab="carnet" aria-selected="false">Carnet</button>
       <button role="tab" data-tab="reglages" aria-selected="false">Réglages</button>
     </nav>
   </div>
@@ -338,6 +354,7 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 <script src="saisie.js"></script>
 <script src="sauvegarde.js"></script>
 <script src="alertes.js"></script>
+<script src="carnet.js"></script>
 <script src="herbe.js"></script>
 </body>
 </html>
