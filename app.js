@@ -3,7 +3,7 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.9.29';
+const VERSION = '1.9.30';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
 const WX_MAX_AGE_MS = 3 * 3600 * 1000; // on actualise la météo toutes les 3 h au plus
@@ -258,6 +258,7 @@ function coefRue(rue, ps) {
   return { coef, n };
 }
 
+const INTERVALLE_MIN = 21; // jours minimum entre deux passages d'herbe sur une même rue
 function statutRue(rue) {
   if (cacheStatut.has(rue.id)) return cacheStatut.get(rue.id);
   const ps = passagesDe(rue.id), today = aujourdhui();
@@ -276,9 +277,13 @@ function statutRue(rue) {
       acc += unitesJour(d);
       if (acc >= seuil) { echeance = d; break; }
     }
+    // on ne peut pas repasser avant 3 semaines sur une même rue (moyens du service) : la date proposée ne descend pas sous ce délai
+    const permis = addJours(dernier.date, INTERVALLE_MIN);
+    if (echeance && echeance < permis) echeance = permis;
     const jours = echeance ? ecartJours(today, echeance) : null;
     let statut = 'ok';
-    if (pct >= 1) statut = 'retard';
+    if (pct >= 1 && today >= permis) statut = 'retard';
+    else if (pct >= 1) statut = jours != null && jours <= 7 ? 'semaine' : 'quinzaine'; // en attente du délai minimum
     else if (jours != null && jours <= 7) statut = 'semaine';
     else if (jours != null && jours <= 15) statut = 'quinzaine';
     const prevFiable = echeance ? (meteo.jours[echeance] ? 'prevision' : 'normale') : null;
@@ -401,7 +406,11 @@ function rendrePriorites() {
   }
   if (typeof blocAlertes === 'function') html += blocAlertes();
   html += blocCinqAFaire();
-  html += `<div class="resume">${['retard', 'semaine', 'quinzaine'].map(k => `<button class="${k}" data-goto="${k}"><b>${groupes[k].length}</b><span>${k === 'retard' ? 'en retard' : k === 'semaine' ? 'cette semaine' : 'sous 15 jours'}</span></button>`).join('')}</div>`;
+  const tousZero = ['retard', 'semaine', 'quinzaine'].every(k => !groupes[k].length);
+  html += `<h3 class="herbe-titre">Herbe</h3>`;
+  html += tousZero
+    ? `<div class="herbe-ok"><b>Tout est bon.</b> Rien à faire dans les 15 jours.</div>`
+    : `<div class="resume">${['retard', 'semaine', 'quinzaine'].map(k => `<button class="${k}" data-goto="${k}"><b>${groupes[k].length}</b><span>${k === 'retard' ? 'en retard' : k === 'semaine' ? 'cette semaine' : 'sous 15 jours'}</span></button>`).join('')}</div>`;
   html += `<p class="resume-2">${groupes.ok.length} à jour${groupes.inconnu.length ? ` · <button data-goto="inconnu">${groupes.inconnu.length} jamais saisie${groupes.inconnu.length > 1 ? 's' : ''}</button>` : ''}</p>`;
   html += `<p class="meteo-ligne">Météo 7 jours : ${virgule(tm / 7)} °C · ${virgule(pluie)} mm · pousse ${pousse}${nObs < 7 ? ` <span>(${7 - nObs} j estimé${7 - nObs > 1 ? 's' : ''} sur moyennes)</span>` : ''}</p>`;
   if (typeof blocPlanning === 'function') html += blocPlanning();
