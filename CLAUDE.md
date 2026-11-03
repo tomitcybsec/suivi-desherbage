@@ -26,6 +26,7 @@
 | `herbe.js` | Prévision de l'herbe par semaine (Suivi > Herbe), « déjà prévu » (rues déjà au planning) |
 | `sauvegarde.js` | Sauvegarde complète (JSON : passages, planning, tableau importé, réglages), envoi par le partage d'Android, restauration par fusion, rappel tous les 3 mois |
 | `carnet.js` | Onglet Carnet : contacts (service/fonction, appel, SMS, e-mail, itinéraire), notes rangées par date, recherche ; données locales, incluses dans la sauvegarde (case à cocher) |
+| `soussecteurs.js` | Sous-secteurs Nord / Sud (de part et d'autre du boulevard Pierre et Marie Curie, qui est au Sud) : une seule sorte d'opération (ramassage de feuilles OU rotofil) par semaine et par sous-secteur ; les prévisions décalent les rues en conséquence. Liste des rues dans `secteurs.js` (`sousSecteurs`) |
 | `tableau.js` | Import du tableau Excel (lecture locale avec `xlsx.full.min.js`), Récap (par rue ou par date, avec recherche), interventions du tableau + celles faites dans l'appli |
 | `dictee.js` | Moteur de reconnaissance des noms de rues dans un texte libre (utilisé par l'import Excel). L'interface de dictée vocale a été **abandonnée** à sa demande. |
 | `sw.js`, `manifest.webmanifest`, `icon-*.png` | Installation comme application, mode hors ligne |

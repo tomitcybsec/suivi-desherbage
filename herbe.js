@@ -25,16 +25,26 @@
   function calcul() {
     const today = aujourdhui(), rues = secteur()?.rues || [], prevus = dejaPrevu(p => Planning.estHerbe(p));
     const retard = [], sem = new Map();
+    // sous-secteurs : une seule sorte d'opération par semaine ; les ramassages de feuilles proposés ont la priorité
+    const SS = typeof SousSecteurs !== 'undefined' ? SousSecteurs : null;
+    const occ = SS ? SS.occupation() : null, enPlus = new Map();
+    if (SS && typeof Feuilles !== 'undefined') {
+      const pf = Feuilles.previsions();
+      const noter = (ids, lundi) => ids.forEach(id => { const ss = SS.de(id); if (!ss) return; const cle = `${ss}|${lundi}`; if (!enPlus.has(cle)) enPlus.set(cle, new Set()); enPlus.get(cle).add('ramassage'); });
+      noter(pf.maintenant, SS.lundiDe(today));
+      pf.semaines.forEach(s => noter(s.ids, s.lundi));
+    }
     rues.forEach(r => {
       const s = statutRue(r); if (!s || s.statut === 'inconnu') return;
-      const item = { r, classe: r.classe, deja: prevus[r.id] || null };
-      if (s.statut === 'retard') { retard.push(item); return; }
-      if (s.jours == null || s.jours > JOURS3) return;
-      let d = s.echeance, w = dow(d);
+      const item = { r, classe: r.classe, deja: prevus[r.id] || null, ss: SS ? SS.de(r.id) : null };
+      if (s.statut === 'retard' && (!SS || SS.libre(occ, r.id, SS.lundiDe(today), 'herbe', enPlus))) { retard.push(item); return; }
+      if (s.statut !== 'retard' && (s.jours == null || s.jours > JOURS3)) return;
+      let d = s.statut === 'retard' ? today : s.echeance, w = dow(d);
       if (w === 6) d = addJours(d, -1); else if (w === 0) d = addJours(d, -2); // week-end : on agit avant, le vendredi
       if (d < today) d = today;
       w = dow(d);
-      const lundi = addJours(d, -((w + 6) % 7));
+      let lundi = addJours(d, -((w + 6) % 7));
+      if (SS) { const l2 = SS.premierLibre(occ, r.id, lundi, 'herbe', enPlus); if (l2 !== lundi) { lundi = l2; d = l2; } }
       const g = sem.get(lundi) || { lundi, vendredi: addJours(lundi, 4), premier: d, items: [] };
       if (d < g.premier) g.premier = d;
       g.items.push(item); sem.set(lundi, g);
@@ -44,10 +54,11 @@
     return { retard: tri(retard), semaines };
   }
 
-  const liste = items => `<details><summary>Voir les rues</summary><ul class="small">${items.map(x => `<li>${esc(nomR(x.r))} <span class="muted">(classe ${x.classe})</span>${x.deja ? ` <strong>· déjà prévu ${esc(jourCourt(x.deja))}</strong>` : ''}</li>`).join('')}</ul></details>`;
+  const liste = items => `<details><summary>Voir les rues</summary><ul class="small">${items.map(x => `<li>${esc(nomR(x.r))} <span class="muted">(classe ${x.classe}${x.ss ? ' · ' + x.ss : ''})</span>${x.deja ? ` <strong>· déjà prévu ${esc(jourCourt(x.deja))}</strong>` : ''}</li>`).join('')}</ul></details>`;
   const resume = items => {
     const c5 = items.filter(x => x.classe === 5).length, dj = items.filter(x => x.deja).length;
-    return `<strong>${items.length} rue${items.length > 1 ? 's' : ''}</strong>${c5 ? ` dont ${c5} en classe 5` : ''}${dj ? ` · <strong>${dj} déjà prévue${dj > 1 ? 's' : ''}</strong>` : ''}`;
+    const nN = items.filter(x => x.ss === 'Nord').length, nS = items.filter(x => x.ss === 'Sud').length;
+    return `<strong>${items.length} rue${items.length > 1 ? 's' : ''}</strong>${nN || nS ? ` (Nord ${nN} · Sud ${nS})` : ''}${c5 ? ` dont ${c5} en classe 5` : ''}${dj ? ` · <strong>${dj} déjà prévue${dj > 1 ? 's' : ''}</strong>` : ''}`;
   };
   // petite mention si de la pluie est prévue pendant la semaine (le rotofil est souvent annulé)
   const pluieSemaine = g => {
