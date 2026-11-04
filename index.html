@@ -253,10 +253,17 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 .met .big small{font-size:16px;font-weight:700}
 .met .pl{font-size:17px;font-weight:700;text-align:right;max-width:58%;line-height:1.2}
 .met .l2{font-size:16px;margin-top:6px}
+.met .l3{font-size:16px;margin-top:8px;font-weight:600}
 .met .jours{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-top:10px}
-.met .jours div{text-align:center;border:1px solid var(--line);padding:5px 2px;font-size:13px}
+.met .jours div{text-align:center;border:1px solid var(--line);padding:5px 2px;font-size:13px;min-width:0}
+.met .jours small{display:block;font-size:10.5px;color:var(--muted);line-height:1.2;margin-top:2px}
+.met .jours .inc{font-style:italic}
+.met .gt{display:block;font-size:11px;font-weight:700;line-height:1.15;margin-top:3px;color:var(--muted)}
+.met .gt .gt-ico{display:inline-block;vertical-align:-1px;margin-right:2px;fill:none;stroke:currentColor;stroke-width:2}
+.met .gt.gouttes,.met .gt.probable,.met .gt.forte{color:var(--pc-bleu)}
+.met .gt.gouttes .gt-ico,.met .gt.probable .gt-ico,.met .gt.forte .gt-ico{fill:currentColor}
+.met .gt.forte{text-decoration:underline}
 .met .jours b{display:block;font-size:18px}
-.met .jours i{display:block;font-style:normal;font-size:12px;color:var(--pc-bleu);font-weight:700}
 
 /* Carnet : contacts et notes */
 .ct{background:var(--surface);border:1px solid var(--line);padding:12px 14px;margin-bottom:8px}

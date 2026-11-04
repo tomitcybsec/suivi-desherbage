@@ -296,6 +296,8 @@ const Planning = (() => {
     return { niveau: 'fort', kind: 'vent', titre: 'Vent fort prévu', detail: detailVent(date, e) + '.' };
   };
 
+  window.Pluie = { evaluer, heuresTxt, mmTxt, quandTxt }; // utilisé par la carte météo de l'Accueil (app.js)
+
   // bandeau tout en haut de l'Accueil : aujourd'hui et les 3 jours suivants (jours travaillés)
   window.blocAlertePluie = function () {
     const R = state.alertes || {}, today = aujourdhui(), lignes = [];

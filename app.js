@@ -3,7 +3,7 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.9.43';
+const VERSION = '1.9.44';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
 const WX_MAX_AGE_MS = 30 * 60 * 1000;   // on actualise la météo si elle a plus de 30 minutes (à l'ouverture, au retour au premier plan, et toutes les 10 min appli ouverte)
@@ -19,7 +19,9 @@ const SEUILS = {
     forte: { mm: 5 }                    // « Forte pluie » : cumul ≥ 5 mm dans la plage
   },
   vent: { rafales: 50 },                // « Vent fort » : rafales ≥ 50 km/h (inchangé)
-  joursAlerte: 3                        // l'alerte couvre aujourd'hui et les 3 jours suivants
+  joursAlerte: 3,                       // l'alerte couvre aujourd'hui et les 3 jours suivants
+  carte: { gouttes: { mm: 0.1, proba: 30 } }, // carte météo de l'Accueil : « gouttes possibles » dès 0,1 mm OU 30 % (« pluie probable » et « forte pluie » : seuils ci-dessus)
+  incertainApresJours: 3                // au-delà de 3 jours, la prévision est marquée « incertaine »
 };
 
 /* ---------- Réglages par défaut du modèle de repousse ---------- */
@@ -372,17 +374,62 @@ function blocMeteo(pousse) {
   // phrase sur la pluie, avec le jour (jamais « pas de pluie » tout seul : on dit jusqu'à quand)
   const LONGS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
   const nomJour = d => d === today ? "aujourd'hui" : d === addJours(today, 1) ? 'demain' : LONGS[new Date(toUTC(d)).getUTCDay()];
-  const pluvieux = jours.filter(x => (x.j.pluie || 0) >= 2 || (x.j.proba != null && x.j.proba >= 60));
-  const forte = pluvieux.some(x => (x.j.pluie || 0) >= 10);
+  // phrase en haut à droite : calculée comme la suite de la carte (pluie dans les heures de travail, mêmes seuils)
+  const GOUTTE = '<svg class="gt-ico" viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M12 2.5C12 2.5 5.5 10 5.5 15a6.5 6.5 0 0 0 13 0c0-5-6.5-12.5-6.5-12.5z"/></svg>';
+  const niveauCarte = m => {
+    if (!m) return null;
+    const S = SEUILS.pluie, G = SEUILS.carte.gouttes, pr = m.proba;
+    if (m.mm >= S.forte.mm) return { k: 'forte', txt: 'forte pluie' };
+    if (m.mm >= S.probable.mm || (pr != null && pr >= S.probable.proba)) return { k: 'probable', txt: 'pluie probable' };
+    if (m.mm >= G.mm || (pr != null && pr >= G.proba)) return { k: 'gouttes', txt: 'gouttes possibles' };
+    return { k: 'sec', txt: 'sec' };
+  };
+  const evalJour = d => (typeof Pluie !== 'undefined' ? Pluie.evaluer(d) : null);
+  const niv = jours.map(x => { const e = evalJour(x.d); return { d: x.d, n: e ? niveauCarte(e.m) : null }; });
+  const pluvieux = niv.filter(x => x.n && (x.n.k === 'probable' || x.n.k === 'forte'));
+  const gouttes = niv.filter(x => x.n && x.n.k === 'gouttes');
+  const forte = pluvieux.length > 0 && pluvieux.every(x => x.n.k === 'forte');
   const fin = jours[jours.length - 1].d;
-  const motPluie = !pluvieux.length ? `Pas de pluie prévue jusqu'à ${nomJour(fin)}`
-    : pluvieux.length === 1 ? `${forte ? 'Forte pluie' : 'Pluie'} ${nomJour(pluvieux[0].d)}`
-    : pluvieux.length === 2 ? `${forte ? 'Forte pluie' : 'Pluie'} ${nomJour(pluvieux[0].d)} et ${nomJour(pluvieux[1].d)}`
-    : `Pluie ${pluvieux.length} jours sur ${jours.length}`;
+  const listeJours = l => l.length === 1 ? nomJour(l[0].d) : l.length === 2 ? `${nomJour(l[0].d)} et ${nomJour(l[1].d)}` : null;
+  const motPluie = pluvieux.length ? (pluvieux.length <= 2 ? `${forte ? 'Forte pluie' : 'Pluie'} ${listeJours(pluvieux)}` : `Pluie ${pluvieux.length} jours sur ${jours.length}`)
+    : gouttes.length ? (gouttes.length <= 2 ? `Gouttes possibles ${listeJours(gouttes)}` : `Gouttes possibles ${gouttes.length} jours sur ${jours.length}`)
+    : `Pas de pluie prévue jusqu'à ${nomJour(fin)}`;
   const motPousse = pousse === 'faible' ? 'peu' : pousse === 'moyenne' ? 'moyennement' : 'beaucoup';
+
+  // niveau de pluie de la carte, toujours affiché : sec / gouttes possibles / pluie probable / forte pluie (pluie en bleu)
+  const mmCourt = mm => mm < 0.05 ? '0 mm' : `${virgule(Math.round(mm * 10) / 10)} mm`;
+  const chiffres = m => `${mmCourt(m.mm)}${m.proba != null ? ` · ${Math.round(m.proba)} %` : ''}`;
+  const cellule = ({ d, j }) => {
+    const e = evalJour(d), n = e ? niveauCarte(e.m) : null, incertain = ecartJours(today, d) > SEUILS.incertainApresJours;
+    return `<div><span>${JOURS_COURTS[new Date(toUTC(d)).getUTCDay()]}</span><b>${Math.round(j.tmax)}°</b>
+      ${n ? `<span class="gt ${n.k}">${GOUTTE}${n.txt}</span><small>${mmCourt(e.m.mm)}${e.m.proba != null ? `<br>${Math.round(e.m.proba)} %` : ''}</small>` : '<small>—</small>'}
+      ${incertain ? '<small class="inc">prévision incertaine</small>' : ''}</div>`;
+  };
+  // ligne « Aujourd'hui : … » avec les heures concernées (ce qui reste de la plage de travail)
+  const R = state.reglages.heuresTravail, eAuj = evalJour(today);
+  let ligneAuj = '';
+  if (typeof Pluie !== 'undefined') {
+    if (!eAuj) ligneAuj = `Aujourd'hui : plage de travail (${R.debut} h – ${R.fin} h) terminée`;
+    else {
+      const n = niveauCarte(eAuj.m);
+      ligneAuj = `Aujourd'hui : ${n.k === 'sec' ? `sec jusqu'à ${R.fin} h` : `${n.txt}${Pluie.heuresTxt(eAuj.m)} (${chiffres(eAuj.m)})`}`;
+    }
+  }
+  // ligne « Week-end : … » : la carte masque le week-end, mais il compte pour le lundi (sol mouillé)
+  const premier = jours[0].d, dernier = jours[jours.length - 1].d, we = [];
+  for (let d = premier; d <= dernier; d = addJours(d, 1)) { const w = new Date(toUTC(d)).getUTCDay(); if (w === 6 || w === 0) we.push(d); }
+  let ligneWE = '';
+  if (we.length) {
+    const parts = we.map(d => { const j = meteo.jours[d]; if (!j || (d > today && !j.prev)) return null; const n = niveauCarte({ mm: j.pluie || 0, proba: j.proba }); return n.k === 'sec' ? null : `${n.txt} ${LONGS[new Date(toUTC(d)).getUTCDay()]} (${chiffres({ mm: j.pluie || 0, proba: j.proba })})`; });
+    const connus = we.some(d => { const j = meteo.jours[d]; return j && (d <= today || j.prev); });
+    ligneWE = connus ? `Week-end : ${parts.filter(Boolean).join(', ') || 'sec'}` : '';
+  }
   return `<div class="met"><div class="l1"><span class="big">${Math.round(tm)} <small>°C en moyenne</small></span><span class="pl">${motPluie}</span></div>
     <div class="l2">5 prochains jours travaillés · l'herbe pousse <strong>${motPousse}</strong>${estime ? ' <span class="muted small">(estimation)</span>' : ''}</div>
-    <div class="jours">${jours.map(({ d, j }) => `<div>${JOURS_COURTS[new Date(toUTC(d)).getUTCDay()]}<b>${Math.round(j.tmax)}°</b>${(j.pluie || 0) >= 2 || (j.proba != null && j.proba >= 60) ? '<i>pluie</i>' : ''}</div>`).join('')}</div></div>`;
+    ${ligneAuj ? `<div class="l3">${esc(ligneAuj)}</div>` : ''}
+    <div class="jours">${jours.map(cellule).join('')}</div>
+    ${ligneWE ? `<div class="l3">${esc(ligneWE)}</div>` : ''}
+    <div class="muted small" style="margin-top:6px">Pluie évaluée pendant les heures de travail (${R.debut} h – ${R.fin} h).</div></div>`;
 }
 
 function rendrePriorites() {
