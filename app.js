@@ -3,10 +3,11 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.9.42';
+const VERSION = '1.9.43';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
-const WX_MAX_AGE_MS = 3 * 3600 * 1000; // on actualise la météo toutes les 3 h au plus
+const WX_MAX_AGE_MS = 30 * 60 * 1000;   // on actualise la météo si elle a plus de 30 minutes (à l'ouverture, au retour au premier plan, et toutes les 10 min appli ouverte)
+const WX_ANCIEN_MS = 3 * 3600 * 1000;   // au-delà de 3 h (ou en cas d'erreur) : bandeau rouge « ne pas se fier aux alertes »
 
 /* ---------- Seuils d'alerte météo (pluie, vent) ----------
    Tout est regroupé ici pour pouvoir les ajuster facilement. La pluie est évaluée UNIQUEMENT dans la plage des « Heures de travail »
@@ -329,12 +330,14 @@ function toast(msg) {
   document.body.appendChild(t); setTimeout(() => t.remove(), 2600);
 }
 function afficherPill(txt, warn = false) { const p = $('#meteoPill'); p.textContent = txt; p.classList.toggle('warn', warn); }
+// la météo est-elle inutilisable pour les alertes ? (échec de la dernière récupération, jamais récupérée, ou plus de 3 h)
+function meteoPerimee() { return !!meteo.erreur || !meteo.majLe || Date.now() - meteo.majLe > WX_ANCIEN_MS; }
 function majPill() {
   if (meteo.erreur && !Object.keys(meteo.jours).length) return afficherPill('Météo indisponible', true);
   if (meteo.erreur) return afficherPill('Météo non actualisée', true);
   if (!meteo.majLe) return afficherPill('Météo…');
   const d = new Date(meteo.majLe);
-  afficherPill(`Météo à jour ${pad(d.getHours())}:${pad(d.getMinutes())}`);
+  afficherPill(`Météo : mise à jour à ${pad(d.getHours())} h ${pad(d.getMinutes())}`, meteoPerimee());
 }
 function ligneRue(rue, { selection = false } = {}) {
   const s = statutRue(rue), today = aujourdhui();
@@ -400,12 +403,10 @@ function rendrePriorites() {
   const uj = u / 7;
   const pousse = uj < 3 ? 'faible' : uj < 9 ? 'moyenne' : 'forte';
 
-  let html = (typeof blocAlertePluie === 'function' ? blocAlertePluie() : '') + blocMeteo(pousse);
+  let html = meteoPerimee() ? `<div class="alerte-haut rouge" role="alert"><div class="ap-ligne"><b>Météo indisponible ou ancienne : ne pas se fier aux alertes.</b>${meteo.erreur ? ` <span class="small">(${esc(meteo.erreur)})</span>` : ''}</div><button class="btn" type="button" data-act="meteo" style="margin-top:8px">Réessayer</button></div>` : '';
+  html += (typeof blocAlertePluie === 'function' ? blocAlertePluie() : '') + blocMeteo(pousse);
   if (!state.passages.length) {
     html += `<div class="notice"><strong>Pour démarrer :</strong> appuie sur <strong>+ Saisir</strong> en bas de l'écran pour noter ce qui a été fait ou ce que tu prévois. Pour plusieurs rues d'un coup, coche-les dans l'onglet <strong>Rues</strong> puis appuie sur <strong>Saisir</strong>. Tu peux aussi importer ton tableau Excel depuis l'onglet <strong>Suivi</strong>. L'appli calculera ensuite toute seule quand y retourner.</div>`;
-  }
-  if (meteo.erreur) {
-    html += `<div class="notice warn">La météo n'a pas pu être récupérée (${esc(meteo.erreur)}). Les calculs utilisent ${nObs ? 'les dernières données connues et ' : ''}des moyennes saisonnières. <button class="btn" data-act="meteo">Réessayer</button></div>`;
   }
   if (typeof blocAlertes === 'function') html += blocAlertes();
   const tousZero = ['retard', 'semaine', 'quinzaine'].every(k => !groupes[k].length);
@@ -834,6 +835,8 @@ selSecteur.innerHTML = SECTEURS.map(s => `<option value="${s.id}">${esc(s.nom)}<
 selSecteur.value = state.secteurId;
 selSecteur.addEventListener('change', () => { state.secteurId = selSecteur.value; ui.selection.clear(); persist(); invalider(); rendre(); majMeteo(true); });
 
+// appli ouverte : on revérifie toutes les 10 minutes (la météo n'est rechargée que si elle a plus de 30 minutes)
+setInterval(() => { if (!document.hidden) majMeteo(); }, 10 * 60 * 1000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { invalider(); majMeteo(); rendre(); } });
 
 /* ---------- Démarrage ---------- */

@@ -226,7 +226,7 @@ const Planning = (() => {
   const JOURS_LONG = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
   const dowD = d => new Date(toUTC(d)).getUTCDay();
   const ouvre = d => dowD(d) !== 0 && dowD(d) !== 6;
-  const horaireOk = () => !!(meteo.horaire && meteo.horaire.le && Date.now() - meteo.horaire.le < 3 * 3600 * 1000);
+  const horaireOk = () => !!(meteo.horaire && meteo.horaire.le && Date.now() - meteo.horaire.le < WX_ANCIEN_MS);
 
   // plage évaluée ce jour-là (aujourd'hui : seulement ce qui reste de la plage de travail)
   function plage(date) {
