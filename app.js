@@ -3,7 +3,7 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.9.44';
+const VERSION = '1.9.45';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
 const WX_MAX_AGE_MS = 30 * 60 * 1000;   // on actualise la météo si elle a plus de 30 minutes (à l'ouverture, au retour au premier plan, et toutes les 10 min appli ouverte)
@@ -21,7 +21,9 @@ const SEUILS = {
   vent: { rafales: 50 },                // « Vent fort » : rafales ≥ 50 km/h (inchangé)
   joursAlerte: 3,                       // l'alerte couvre aujourd'hui et les 3 jours suivants
   carte: { gouttes: { mm: 0.1, proba: 30 } }, // carte météo de l'Accueil : « gouttes possibles » dès 0,1 mm OU 30 % (« pluie probable » et « forte pluie » : seuils ci-dessus)
-  incertainApresJours: 3                // au-delà de 3 jours, la prévision est marquée « incertaine »
+  incertainApresJours: 3,               // au-delà de 3 jours, la prévision est marquée « incertaine »
+  modelesJours: 3,                      // Météo-France (AROME/ARPEGE) interrogé en plus du modèle par défaut pour aujourd'hui + 3 jours ; au-delà, modèle par défaut seul
+  heure: { faible: 0.1, moderee: 2.5, forte: 7.6 } // « pluie dans l'heure » (mm sur 60 min) : < 0,1 sec · < 2,5 faible · < 7,6 modérée · sinon forte
 };
 
 /* ---------- Réglages par défaut du modèle de repousse ---------- */
@@ -89,8 +91,9 @@ state.reglages = Object.assign({}, DEFAULT_REGLAGES, state.reglages || {});
 state.reglages.facteursClasse = Object.assign({}, DEFAULT_REGLAGES.facteursClasse, (state.reglages.facteursClasse || {}));
 state.reglages.heuresTravail = Object.assign({}, DEFAULT_REGLAGES.heuresTravail, (state.reglages.heuresTravail || {}));
 const meteo = Object.assign({ jours: {}, majLe: 0, erreur: null, secteurId: null }, charger(WX_KEY, {}));
-// données horaires (heure par heure) : { defaut: { 'AAAA-MM-JJ': { p: [24 mm], pr: [24 %], g: [24 km/h] } }, le: dernière mise à jour réussie }
-meteo.horaire = Object.assign({ defaut: {}, le: 0, erreur: null }, meteo.horaire || {});
+// données horaires (heure par heure) : { defaut: { 'AAAA-MM-JJ': { p: [24 mm], pr: [24 %], g: [24 km/h] } }, mf: idem (Météo-France, 4 jours),
+//   minutely: [{ t: 'AAAA-MM-JJTHH:MM', mm }] par quarts d'heure, le: dernière mise à jour réussie }
+meteo.horaire = Object.assign({ defaut: {}, mf: {}, minutely: [], le: 0, erreur: null }, meteo.horaire || {});
 const persist = () => sauver(STORE_KEY, state);
 const persistMeteo = () => sauver(WX_KEY, meteo);
 
@@ -180,30 +183,48 @@ async function majMeteo(force = false) {
   })();
   return meteoEnCours;
 }
-// Prévision heure par heure (précipitations, probabilité, rafales). Un seul essai, sans erreur bloquante :
-// si ça échoue, les alertes retombent sur les valeurs journalières (voir alerteMeteo dans planning.js).
-// Open-Meteo : « precipitation » à l'heure H = cumul de l'heure PRÉCÉDENTE (H-1 → H).
-function lireHoraire(h) {
+// Prévision heure par heure (précipitations, probabilité, rafales). Open-Meteo : « precipitation » à l'heure H = cumul de l'heure PRÉCÉDENTE (H-1 → H).
+function lireHoraire(h, modele) {
   const out = {};
   if (!h || !Array.isArray(h.time)) return out;
+  // avec « models=… » Open-Meteo peut suffixer les noms (precipitation_meteofrance_seamless) : on accepte les deux écritures
+  const col = nom => h[nom] || (modele && h[nom + '_' + modele]) || null;
+  const P = col('precipitation'), PR = col('precipitation_probability'), G = col('wind_gusts_10m');
   h.time.forEach((t, i) => {
     const d = String(t).slice(0, 10), hh = +String(t).slice(11, 13);
     if (!(hh >= 0 && hh <= 23)) return;
     const j = out[d] = out[d] || { p: Array(24).fill(null), pr: Array(24).fill(null), g: Array(24).fill(null) };
-    if (h.precipitation) j.p[hh] = h.precipitation[i];
-    if (h.precipitation_probability) j.pr[hh] = h.precipitation_probability[i];
-    if (h.wind_gusts_10m) j.g[hh] = h.wind_gusts_10m[i];
+    if (P) j.p[hh] = P[i];
+    if (PR) j.pr[hh] = PR[i];
+    if (G) j.g[hh] = G[i];
   });
   return out;
 }
+async function appelHoraire(pos, extra, modele) {
+  const url = 'https://api.open-meteo.com/v1/forecast?' + new URLSearchParams({ ...pos, hourly: 'precipitation,precipitation_probability,wind_gusts_10m', timezone: 'Europe/Paris', ...extra });
+  const r = await fetch(url); if (!r.ok) throw new Error('HTTP ' + r.status);
+  const json = await r.json();
+  const h = lireHoraire(json?.hourly, modele);
+  if (!Object.keys(h).length) throw new Error('réponse horaire vide');
+  return { h, json };
+}
+function lireMinutely(m) {
+  if (!m || !Array.isArray(m.time) || !Array.isArray(m.precipitation)) return [];
+  return m.time.map((t, i) => ({ t: String(t), mm: m.precipitation[i] })).filter(x => x.mm != null);
+}
+// Prévision heure par heure : modèle par défaut (16 jours) + quarts d'heure pour « pluie dans l'heure »,
+// et Météo-France (meteofrance_seamless) pour aujourd'hui + 3 jours. Chaque appel est indépendant et sans erreur bloquante :
+// en cas d'échec on retombe sur ce qui reste (puis sur le journalier).
 async function majHoraire(pos) {
-  try {
-    const url = 'https://api.open-meteo.com/v1/forecast?' + new URLSearchParams({ ...pos, hourly: 'precipitation,precipitation_probability,wind_gusts_10m', forecast_days: 16, timezone: 'Europe/Paris' });
-    const r = await fetch(url); if (!r.ok) throw new Error('HTTP ' + r.status);
-    const h = lireHoraire((await r.json())?.hourly);
-    if (!Object.keys(h).length) throw new Error('réponse horaire vide');
-    meteo.horaire = { defaut: h, le: Date.now(), erreur: null };
-  } catch (e) { meteo.horaire.erreur = String(e.message || e); }
+  const ancien = meteo.horaire, neuf = { defaut: {}, mf: {}, minutely: [], le: 0, erreur: null };
+  const [principal, mf] = await Promise.allSettled([
+    appelHoraire(pos, { forecast_days: 16, minutely_15: 'precipitation', forecast_minutely_15: 16 }).catch(() => appelHoraire(pos, { forecast_days: 16 })),
+    appelHoraire(pos, { forecast_days: SEUILS.modelesJours + 1, models: 'meteofrance_seamless' }, 'meteofrance_seamless'),
+  ]);
+  if (principal.status === 'fulfilled') { neuf.defaut = principal.value.h; neuf.minutely = lireMinutely(principal.value.json?.minutely_15); neuf.le = Date.now(); }
+  else neuf.erreur = String((principal.reason && principal.reason.message) || principal.reason);
+  if (mf.status === 'fulfilled') neuf.mf = mf.value.h;
+  meteo.horaire = neuf.le ? neuf : Object.assign({}, ancien, { erreur: neuf.erreur });
 }
 // date la plus ancienne dont on a besoin et qui manque dans le cache (passages > 92 jours)
 function joursManquants(de, a) {
@@ -415,6 +436,9 @@ function blocMeteo(pousse) {
       ligneAuj = `Aujourd'hui : ${n.k === 'sec' ? `sec jusqu'à ${R.fin} h` : `${n.txt}${Pluie.heuresTxt(eAuj.m)} (${chiffres(eAuj.m)})`}`;
     }
   }
+  // « Pluie dans l'heure » : 60 prochaines minutes (quarts d'heure), seulement si la donnée est disponible et récente
+  const ph = typeof Pluie !== 'undefined' ? Pluie.heure() : null;
+  const ligneHeure = ph ? `Pluie dans l'heure : ${ph.niv}${ph.niv === 'sec' ? '' : ` (${mmCourt(ph.mm)})`}` : '';
   // ligne « Week-end : … » : la carte masque le week-end, mais il compte pour le lundi (sol mouillé)
   const premier = jours[0].d, dernier = jours[jours.length - 1].d, we = [];
   for (let d = premier; d <= dernier; d = addJours(d, 1)) { const w = new Date(toUTC(d)).getUTCDay(); if (w === 6 || w === 0) we.push(d); }
@@ -427,6 +451,7 @@ function blocMeteo(pousse) {
   return `<div class="met"><div class="l1"><span class="big">${Math.round(tm)} <small>°C en moyenne</small></span><span class="pl">${motPluie}</span></div>
     <div class="l2">5 prochains jours travaillés · l'herbe pousse <strong>${motPousse}</strong>${estime ? ' <span class="muted small">(estimation)</span>' : ''}</div>
     ${ligneAuj ? `<div class="l3">${esc(ligneAuj)}</div>` : ''}
+    ${ligneHeure ? `<div class="l3">${esc(ligneHeure)}</div>` : ''}
     <div class="jours">${jours.map(cellule).join('')}</div>
     ${ligneWE ? `<div class="l3">${esc(ligneWE)}</div>` : ''}
     <div class="muted small" style="margin-top:6px">Pluie évaluée pendant les heures de travail (${R.debut} h – ${R.fin} h).</div></div>`;

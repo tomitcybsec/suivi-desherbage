@@ -20,7 +20,7 @@
 | `app.js` | Cœur : état et stockage (`localStorage`), météo Open-Meteo, modèle de repousse de l'herbe, onglets Priorités / Rues / Suivi / Réglages, fiche d'une rue |
 | `secteurs.js` | Référentiel : 108 lignes de voies du secteur 3 (classe pôle 0–5, longueur, tronçon), `alias` (ex. « les Mazades » = Avenue des Mazades), `zones` (La Vache, Parking de la Glanerie), `ruesFeuilles` |
 | `saisie.js` | Saisie « à cocher » : Fait / À prévoir, date, interventions, rues, agents, état de l'herbe |
-| `planning.js` | Interventions prévues et réalisées, boutons Fait / Reporter / Annuler, alertes météo (pluie, vent), « Copier pour mon tableau » (lignes TSV dans l'ordre des colonnes de son Excel) |
+| `planning.js` | Interventions prévues et réalisées, boutons Fait / Modifier / Reporter / Annuler, alertes météo (pluie par heures de travail, vent, bandeau du haut de l'Accueil, pluie dans l'heure), « Copier pour mon tableau » (lignes TSV dans l'ordre des colonnes de son Excel) |
 | `feuilles.js` | Module feuilles mortes |
 | `alertes.js` | Alertes à l'ouverture (haut de Priorités) : pluie, vent, chute de feuilles, avaloirs, interventions pas faites ; interrupteurs dans Réglages |
 | `herbe.js` | Prévision de l'herbe par semaine (Suivi > Herbe), « déjà prévu » (rues déjà au planning) |
@@ -35,7 +35,8 @@
 - **Classes pôle** : 5 = doit être le plus propre possible, 0 = peut attendre (à confirmer par sa hiérarchie). Seuil de repousse = seuil de base × facteur de classe (5 : 0,7 … 0 : 1,3).
 - **Herbe** : unités de pousse par jour = degrés au-dessus de 5 °C × facteur eau (pluie sur 10 jours). Un **rotofil réalisé** remet le compteur à zéro. L'état constaté (presque propre / un peu / beaucoup d'herbe) ajuste le seuil rue par rue.
 - **Feuilles mortes** : seuls le **coordonné** et le **pompage** enlèvent les feuilles (pas le souffleur seul, pas le balayage manuel). Indice de chute = courbe de saison (pic mi-novembre) × gel × vent. Tous les coordonnés de l'avenue François Collignon concernent les feuilles.
-- **Alertes** : pluie probable ≥ 2 mm ou ≥ 60 % ; forte pluie ≥ 10 mm ; vent fort ≥ 50 km/h. La pluie annule en général coordonnés et rotofil.
+- **Alertes météo** (objet `SEUILS` dans `app.js`, logique dans `planning.js`) : la pluie est évaluée **heure par heure dans la plage « Heures de travail »** (Réglages, 7 h – 15 h par défaut) : « possible » ≥ 0,3 mm ou ≥ 40 %, « probable » ≥ 1 mm ou ≥ 60 %, « forte » ≥ 5 mm ; vent fort = rafales ≥ 50 km/h. Aujourd'hui + 3 jours : modèle par défaut ET Météo-France (`meteofrance_seamless`), on alerte si l'un des deux annonce de la pluie ; au-delà, modèle par défaut seul. Sans données horaires, repli sur le journalier. Bandeau ambre/rouge tout en haut de l'Accueil ; bandeau rouge « Météo indisponible ou ancienne » si échec ou donnée de plus de 3 h ; météo rechargée si plus de 30 min. La pluie annule en général coordonnés et rotofil. Le modèle de repousse de l'herbe et les feuilles utilisent toujours les valeurs **journalières**.
+- **À vérifier sur le vrai service** : le format de la réponse horaire / `minutely_15` / `models=meteofrance_seamless` d'Open-Meteo a été codé d'après la documentation (accès réseau bloqué pendant le développement) ; le code accepte les noms de variables avec ou sans suffixe de modèle et retombe sur le journalier en cas de problème.
 - Une intervention « Prévu » ne compte jamais comme un passage tant qu'elle n'est pas « Réalisé ».
 - Colonnes de son tableau Excel : N°, Date, Jour, Type, Lieu, Intervention, Matériel, Poches, Agents, Statut, Observations, État herbe avant.
 

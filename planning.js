@@ -235,9 +235,13 @@ const Planning = (() => {
     if (date === today) lo = Math.max(lo, new Date().getHours());
     return lo < hi ? { lo, hi } : null;
   }
-  // prévisions disponibles pour un jour : une liste de sources { id, nom, h } (h = tableau horaire ou null)
+  // prévisions disponibles pour un jour : une liste de sources { id, nom, h } (h = tableau horaire ou null).
+  // Aujourd'hui + 3 jours : modèle par défaut ET Météo-France (AROME/ARPEGE) ; au-delà : modèle par défaut seul.
   function sources(date) {
-    return [{ id: 'defaut', nom: 'modèle principal', h: horaireOk() ? (meteo.horaire.defaut[date] || null) : null }];
+    const ok = horaireOk(), n = ecartJours(aujourdhui(), date);
+    const s = [{ id: 'defaut', nom: 'autre modèle', h: ok ? (meteo.horaire.defaut[date] || null) : null }];
+    if (ok && n <= SEUILS.modelesJours && meteo.horaire.mf && meteo.horaire.mf[date]) s.push({ id: 'mf', nom: 'Météo-France', h: meteo.horaire.mf[date] });
+    return s;
   }
   // mesure sur la plage : mm cumulés, probabilité max, rafales max, heures concernées
   function mesure(date, h) {
@@ -263,13 +267,28 @@ const Planning = (() => {
     if (m.mm >= S.possible.mm || (pr != null && pr >= S.possible.proba)) return 'possible';
     return null;
   }
-  // évaluation d'un jour : niveau de pluie (le plus prudent des sources), rafales, mesure retenue
+  // évaluation d'un jour : niveau de pluie le plus PRUDENT des modèles (si l'un annonce de la pluie dans la plage, on alerte),
+  // rafales max, mesure du modèle retenu, et une phrase quand les deux modèles divergent
   function evaluer(date) {
     const res = sources(date).map(s => ({ ...s, m: mesure(date, s.h) })).filter(x => x.m);
     if (!res.length) return null;
     res.forEach(x => { x.n = niveauPluie(x.m); });
     const best = res.reduce((a, b) => (RANG[b.n] || 0) > (RANG[a.n] || 0) ? b : a);
-    return { niveau: best.n, m: best.m, rafales: Math.max(...res.map(x => x.m.rafales || 0)), res };
+    let modeles = '';
+    const mf = res.find(x => x.id === 'mf'), df = res.find(x => x.id === 'defaut');
+    if (mf && df && mf.m.horaire && df.m.horaire && (mf.n || df.n)) {
+      modeles = mf.n && df.n ? 'modèles d\'accord' : mf.n ? 'Météo-France : pluie, autre modèle : sec' : 'Météo-France : sec, autre modèle : pluie';
+    }
+    return { niveau: best.n, m: best.m, rafales: Math.max(...res.map(x => x.m.rafales || 0)), res, modeles };
+  }
+  // pluie dans l'heure (quarts d'heure du modèle par défaut) : sec / faible / modérée / forte, sur les 60 prochaines minutes
+  function pluieHeure() {
+    const mi = meteo.horaire && meteo.horaire.minutely;
+    if (!mi || !mi.length || !meteo.horaire.le || Date.now() - meteo.horaire.le > 60 * 60000) return null;
+    const t0 = Date.now(), suiv = mi.filter(x => new Date(x.t).getTime() > t0).slice(0, 4);
+    if (suiv.length < 3) return null;
+    const mm = suiv.reduce((s, x) => s + (x.mm || 0), 0), S = SEUILS.heure;
+    return { mm, niv: mm < S.faible ? 'sec' : mm < S.moderee ? 'faible' : mm < S.forte ? 'modérée' : 'forte' };
   }
   const quandTxt = d => { const n = ecartJours(aujourdhui(), d); return n === 0 ? "aujourd'hui" : n === 1 ? 'demain' : JOURS_LONG[dowD(d)]; };
   const mmTxt = mm => mm < 0.05 ? '0 mm' : mm < 0.1 ? '< 0,1 mm' : `${virgule(Math.round(mm * 10) / 10)} mm`;
@@ -278,7 +297,7 @@ const Planning = (() => {
   // texte d'une alerte de pluie : « aujourd'hui entre 9 h et 12 h (1,8 mm, 70 %) »
   function detailPluie(date, e) {
     const m = e.m, chiffres = [mmTxt(m.mm)]; if (m.proba != null && m.proba > 0) chiffres.push(`${Math.round(m.proba)} %`);
-    return `${quandTxt(date)}${heuresTxt(m)} (${chiffres.join(', ')})`;
+    return `${quandTxt(date)}${heuresTxt(m)} (${chiffres.join(', ')})` + (e.modeles ? ` · ${e.modeles}` : '');
   }
   const detailVent = (date, e) => `${quandTxt(date)} : rafales jusqu'à ${Math.round(e.rafales)} km/h`;
 
@@ -296,7 +315,7 @@ const Planning = (() => {
     return { niveau: 'fort', kind: 'vent', titre: 'Vent fort prévu', detail: detailVent(date, e) + '.' };
   };
 
-  window.Pluie = { evaluer, heuresTxt, mmTxt, quandTxt }; // utilisé par la carte météo de l'Accueil (app.js)
+  window.Pluie = { evaluer, heuresTxt, mmTxt, quandTxt, heure: pluieHeure }; // utilisé par la carte météo de l'Accueil (app.js)
 
   // bandeau tout en haut de l'Accueil : aujourd'hui et les 3 jours suivants (jours travaillés)
   window.blocAlertePluie = function () {
@@ -316,6 +335,8 @@ const Planning = (() => {
         lignes.push(`<div class="ap-ligne"><b>Vent fort</b> ${esc(detailVent(d, e))}${e.niveau ? '' : plus}</div>`);
       }
     }
+    const ph = pluieHeure();
+    if (ph && ph.niv !== 'sec') { if (ph.niv === 'forte') rouge = true; lignes.unshift(`<div class="ap-ligne"><b>Pluie dans l'heure</b> : ${ph.niv} (${mmTxt(ph.mm)})</div>`); }
     if (!lignes.length) return '';
     return `<div class="alerte-haut ${rouge ? 'rouge' : 'ambre'}" role="alert"><div class="ap-titre">Alerte météo</div>${lignes.slice(0, 5).join('')}</div>`;
   };
