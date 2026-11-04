@@ -336,7 +336,7 @@ const Planning = (() => {
       }
     }
     const ph = pluieHeure();
-    if (ph && ph.niv !== 'sec') { if (ph.niv === 'forte') rouge = true; lignes.unshift(`<div class="ap-ligne"><b>Pluie dans l'heure</b> : ${ph.niv} (${mmTxt(ph.mm)})</div>`); }
+    if (ph && ph.niv !== 'sec') { if (ph.niv === 'forte') rouge = true; lignes.unshift(`<div class="ap-ligne"><b>Pluie dans l'heure</b> <span class="mot-h h-${ph.niv === 'faible' ? 1 : ph.niv === 'forte' ? 3 : 2}">${ph.niv.toUpperCase()}</span> <span class="small">(${mmTxt(ph.mm)})</span></div>`); }
     if (!lignes.length) return '';
     return `<div class="alerte-haut ${rouge ? 'rouge' : 'ambre'}" role="alert"><div class="ap-titre">Alerte météo</div>${lignes.slice(0, 5).join('')}</div>`;
   };

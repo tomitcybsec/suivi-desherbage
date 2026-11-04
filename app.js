@@ -3,7 +3,7 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.9.45';
+const VERSION = '1.9.46';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
 const WX_MAX_AGE_MS = 30 * 60 * 1000;   // on actualise la météo si elle a plus de 30 minutes (à l'ouverture, au retour au premier plan, et toutes les 10 min appli ouverte)
@@ -436,9 +436,11 @@ function blocMeteo(pousse) {
       ligneAuj = `Aujourd'hui : ${n.k === 'sec' ? `sec jusqu'à ${R.fin} h` : `${n.txt}${Pluie.heuresTxt(eAuj.m)} (${chiffres(eAuj.m)})`}`;
     }
   }
-  // « Pluie dans l'heure » : 60 prochaines minutes (quarts d'heure), seulement si la donnée est disponible et récente
+  // « Dans l'heure » : 60 prochaines minutes (quarts d'heure). Bloc bien visible, le mot en très gros :
+  // SEC en orange (choix du propriétaire), puis FAIBLE / MODÉRÉE / FORTE en bleu de plus en plus foncé. Pas de bloc si la donnée est absente ou ancienne.
   const ph = typeof Pluie !== 'undefined' ? Pluie.heure() : null;
-  const ligneHeure = ph ? `Pluie dans l'heure : ${ph.niv}${ph.niv === 'sec' ? '' : ` (${mmCourt(ph.mm)})`}` : '';
+  const MOTS_HEURE = { sec: ['SEC', 'h-sec'], faible: ['FAIBLE', 'h-1'], 'modérée': ['MODÉRÉE', 'h-2'], forte: ['FORTE', 'h-3'] };
+  const blocHeure = ph ? `<div class="dh ${MOTS_HEURE[ph.niv][1]}"><div class="lab">Dans l'heure</div><div class="mot">${GOUTTE}${MOTS_HEURE[ph.niv][0]}</div><div class="mm">${mmCourt(ph.mm)}</div></div>` : '';
   // ligne « Week-end : … » : la carte masque le week-end, mais il compte pour le lundi (sol mouillé)
   const premier = jours[0].d, dernier = jours[jours.length - 1].d, we = [];
   for (let d = premier; d <= dernier; d = addJours(d, 1)) { const w = new Date(toUTC(d)).getUTCDay(); if (w === 6 || w === 0) we.push(d); }
@@ -450,8 +452,8 @@ function blocMeteo(pousse) {
   }
   return `<div class="met"><div class="l1"><span class="big">${Math.round(tm)} <small>°C en moyenne</small></span><span class="pl">${motPluie}</span></div>
     <div class="l2">5 prochains jours travaillés · l'herbe pousse <strong>${motPousse}</strong>${estime ? ' <span class="muted small">(estimation)</span>' : ''}</div>
+    ${blocHeure}
     ${ligneAuj ? `<div class="l3">${esc(ligneAuj)}</div>` : ''}
-    ${ligneHeure ? `<div class="l3">${esc(ligneHeure)}</div>` : ''}
     <div class="jours">${jours.map(cellule).join('')}</div>
     ${ligneWE ? `<div class="l3">${esc(ligneWE)}</div>` : ''}
     <div class="muted small" style="margin-top:6px">Pluie évaluée pendant les heures de travail (${R.debut} h – ${R.fin} h).</div></div>`;
