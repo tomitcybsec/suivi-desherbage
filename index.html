@@ -17,7 +17,7 @@
   --bg:#efeeea; --surface:#ffffff; --surface2:#f6f5f2; --text:#1c1c1c; --muted:#55575a; --line:#d6d4cd;
   --head:#202326; --head-ink:#ffffff; --head-muted:#b9bdc2;
   --accent:#f2c200; --accent-ink:#1c1c1c; --focus:#1c1c1c;
-  --retard:#b3261e; --retard-ink:#ffffff; --vert:#2e7d32; --vert-clair:#e3f1e4; --vert-ink:#ffffff;
+  --retard:#b3261e; --retard-ink:#ffffff; --ambre:#b45f06; --ambre-clair:#fff1d6; --vert:#2e7d32; --vert-clair:#e3f1e4; --vert-ink:#ffffff;
   --semaine:#1c1c1c; --quinzaine:#1c1c1c; --ok:#55575a; --inconnu:#8a8c8f;
   /* touche Toulouse (violet) — ne remplace PAS --accent, qui reste le jaune de l'action principale */
   --toulouse:#6b3fa0; --toulouse-clair:#dccfec; --mortier:rgba(255,255,255,.32);
@@ -28,7 +28,7 @@
     --bg:#14181d; --surface:#1d232a; --surface2:#25292c; --text:#ecebe7; --muted:#a4a8ad; --line:#363a3e;
     --head:#0e1215; --head-ink:#ffffff; --head-muted:#9ca1a6;
     --accent:#f2c200; --accent-ink:#1c1c1c; --focus:#f2c200;
-    --retard:#e5534b; --retard-ink:#ffffff; --vert:#5dbb63; --vert-clair:#1f3322; --vert-ink:#0c1a0d;
+    --retard:#e5534b; --retard-ink:#ffffff; --ambre:#ffb04a; --ambre-clair:#3a2a0f; --vert:#5dbb63; --vert-clair:#1f3322; --vert-ink:#0c1a0d;
     --semaine:#ecebe7; --quinzaine:#ecebe7; --ok:#a4a8ad; --inconnu:#7d8186;
     --toulouse:#c9a7f0; --toulouse-clair:#3a2f4c; --mortier:rgba(20,10,40,.28);
     --c5:#c9a7f0; --c4:#a98bd6; --c3:#e0866a; --c2:#c98f79; --c1:#a8857a; --c0:#7e6d66;
@@ -253,10 +253,17 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 .met .big small{font-size:16px;font-weight:700}
 .met .pl{font-size:17px;font-weight:700;text-align:right;max-width:58%;line-height:1.2}
 .met .l2{font-size:16px;margin-top:6px}
+.met .l3{font-size:16px;margin-top:8px;font-weight:600}
 .met .jours{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-top:10px}
-.met .jours div{text-align:center;border:1px solid var(--line);padding:5px 2px;font-size:13px}
+.met .jours div{text-align:center;border:1px solid var(--line);padding:5px 2px;font-size:13px;min-width:0}
+.met .jours small{display:block;font-size:10.5px;color:var(--muted);line-height:1.2;margin-top:2px}
+.met .jours .inc{font-style:italic}
+.met .gt{display:block;font-size:11px;font-weight:700;line-height:1.15;margin-top:3px;color:var(--muted)}
+.met .gt .gt-ico{display:inline-block;vertical-align:-1px;margin-right:2px;fill:none;stroke:currentColor;stroke-width:2}
+.met .gt.gouttes,.met .gt.probable,.met .gt.forte{color:var(--pc-bleu)}
+.met .gt.gouttes .gt-ico,.met .gt.probable .gt-ico,.met .gt.forte .gt-ico{fill:currentColor}
+.met .gt.forte{text-decoration:underline}
 .met .jours b{display:block;font-size:18px}
-.met .jours i{display:block;font-style:normal;font-size:12px;color:var(--pc-bleu);font-weight:700}
 
 /* Carnet : contacts et notes */
 .ct{background:var(--surface);border:1px solid var(--line);padding:12px 14px;margin-bottom:8px}
@@ -272,6 +279,12 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 .grp{font-size:14px;font-weight:700;color:var(--muted);margin:14px 0 6px;text-transform:uppercase;letter-spacing:.4px}
 input.q{width:100%;padding:12px;font-size:16px;border:1px solid var(--line);background:var(--surface);color:var(--text);margin-bottom:10px;box-sizing:border-box}
 nav.tabs button{padding-left:2px;padding-right:2px}
+
+/* Alerte météo tout en haut de l'Accueil */
+.alerte-haut{--c:var(--ambre);background:var(--ambre-clair);border:2px solid var(--c);border-left:12px solid var(--c);padding:12px 14px;margin:0 0 12px}
+.alerte-haut.rouge{--c:var(--retard);background:color-mix(in srgb,var(--retard) 14%,var(--surface))}
+.alerte-haut .ap-titre{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--c);margin-bottom:6px}
+.alerte-haut .ap-ligne{font-size:18px;line-height:1.3;margin-top:4px}
 </style>
 </head>
 <body>

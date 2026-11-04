@@ -3,17 +3,36 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.9.40';
+const VERSION = '1.9.45';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
-const WX_MAX_AGE_MS = 3 * 3600 * 1000; // on actualise la météo toutes les 3 h au plus
+const WX_MAX_AGE_MS = 30 * 60 * 1000;   // on actualise la météo si elle a plus de 30 minutes (à l'ouverture, au retour au premier plan, et toutes les 10 min appli ouverte)
+const WX_ANCIEN_MS = 3 * 3600 * 1000;   // au-delà de 3 h (ou en cas d'erreur) : bandeau rouge « ne pas se fier aux alertes »
+
+/* ---------- Seuils d'alerte météo (pluie, vent) ----------
+   Tout est regroupé ici pour pouvoir les ajuster facilement. La pluie est évaluée UNIQUEMENT dans la plage des « Heures de travail »
+   (Réglages, 7 h - 15 h par défaut) : cumul en mm et probabilité maximale sur ces heures. */
+const SEUILS = {
+  pluie: {
+    possible: { mm: 0.3, proba: 40 },   // « Pluie possible » : cumul ≥ 0,3 mm OU probabilité ≥ 40 %
+    probable: { mm: 1, proba: 60 },     // « Pluie probable » : cumul ≥ 1 mm OU probabilité ≥ 60 %
+    forte: { mm: 5 }                    // « Forte pluie » : cumul ≥ 5 mm dans la plage
+  },
+  vent: { rafales: 50 },                // « Vent fort » : rafales ≥ 50 km/h (inchangé)
+  joursAlerte: 3,                       // l'alerte couvre aujourd'hui et les 3 jours suivants
+  carte: { gouttes: { mm: 0.1, proba: 30 } }, // carte météo de l'Accueil : « gouttes possibles » dès 0,1 mm OU 30 % (« pluie probable » et « forte pluie » : seuils ci-dessus)
+  incertainApresJours: 3,               // au-delà de 3 jours, la prévision est marquée « incertaine »
+  modelesJours: 3,                      // Météo-France (AROME/ARPEGE) interrogé en plus du modèle par défaut pour aujourd'hui + 3 jours ; au-delà, modèle par défaut seul
+  heure: { faible: 0.1, moderee: 2.5, forte: 7.6 } // « pluie dans l'heure » (mm sur 60 min) : < 0,1 sec · < 2,5 faible · < 7,6 modérée · sinon forte
+};
 
 /* ---------- Réglages par défaut du modèle de repousse ---------- */
 const DEFAULT_REGLAGES = {
   seuilBase: 400,   // unités de pousse cumulées avant re-intervention, pour une rue de classe 3
   tBase: 5,         // °C sous lesquels l'herbe ne pousse quasiment pas
   pluieRef: 15,     // mm de pluie sur 10 jours pour une pousse "sans manque d'eau"
-  facteursClasse: { 0: 1.3, 1: 1.2, 2: 1.1, 3: 1.0, 4: 0.85, 5: 0.7 } // 5 = le plus exigeant -> seuil plus bas
+  facteursClasse: { 0: 1.3, 1: 1.2, 2: 1.1, 3: 1.0, 4: 0.85, 5: 0.7 }, // 5 = le plus exigeant -> seuil plus bas
+  heuresTravail: { debut: 7, fin: 15 } // plage de la journée sur laquelle on évalue la pluie (alertes)
 };
 /* Normales approximatives Toulouse (température moyenne °C et pluie mm/jour), utilisées
    au-delà des 16 jours de prévision ou si la météo est indisponible. */
@@ -70,7 +89,11 @@ function sauver(key, val) {
 const state = Object.assign({ passages: [], reglages: null, auteur: '', equipe: '', secteurId: null }, charger(STORE_KEY, {}));
 state.reglages = Object.assign({}, DEFAULT_REGLAGES, state.reglages || {});
 state.reglages.facteursClasse = Object.assign({}, DEFAULT_REGLAGES.facteursClasse, (state.reglages.facteursClasse || {}));
+state.reglages.heuresTravail = Object.assign({}, DEFAULT_REGLAGES.heuresTravail, (state.reglages.heuresTravail || {}));
 const meteo = Object.assign({ jours: {}, majLe: 0, erreur: null, secteurId: null }, charger(WX_KEY, {}));
+// données horaires (heure par heure) : { defaut: { 'AAAA-MM-JJ': { p: [24 mm], pr: [24 %], g: [24 km/h] } }, mf: idem (Météo-France, 4 jours),
+//   minutely: [{ t: 'AAAA-MM-JJTHH:MM', mm }] par quarts d'heure, le: dernière mise à jour réussie }
+meteo.horaire = Object.assign({ defaut: {}, mf: {}, minutely: [], le: 0, erreur: null }, meteo.horaire || {});
 const persist = () => sauver(STORE_KEY, state);
 const persistMeteo = () => sauver(WX_KEY, meteo);
 
@@ -151,7 +174,7 @@ async function majMeteo(force = false) {
         meteo.complement = { le: Date.now(), plage: `${debut} → ${fin}`, ajoutes: Object.keys(meteo.jours).length - avant, detail: detail.join(' · ') || 'rien à compléter' };
       }
       meteo.majLe = Date.now(); meteo.erreur = null;
-      await majModeles(pos); // comparaison discrète avec d'autres modèles (Météo-France, européen) : sans erreur affichée si ça échoue
+      await majHoraire(pos); // heure par heure ; si ça échoue, on garde le fonctionnement journalier
     } catch (e) {
       meteo.erreur = String(e.message || e);
     }
@@ -160,22 +183,48 @@ async function majMeteo(force = false) {
   })();
   return meteoEnCours;
 }
-// Autres modèles de prévision (Météo-France AROME/ARPEGE, européen). Un seul essai, silencieux : sert seulement à confirmer
-// les alertes lointaines (3 jours et plus) — voir alertes.js. Sans réponse, les alertes se basent sur le modèle principal.
-async function majModeles(pos) {
-  try {
-    const modeles = ['meteofrance_seamless', 'ecmwf_ifs025'];
-    const url = 'https://api.open-meteo.com/v1/forecast?' + new URLSearchParams({ ...pos, models: modeles.join(','), daily: 'precipitation_sum,wind_speed_10m_max', forecast_days: 7, timezone: 'Europe/Paris' });
-    const r = await fetch(url); if (!r.ok) return;
-    const d = (await r.json())?.daily; if (!d?.time) return;
-    const out = {};
-    d.time.forEach((t, i) => {
-      const pluie = [], vent = [];
-      modeles.forEach(m => { const p = d['precipitation_sum_' + m]?.[i], v = d['wind_speed_10m_max_' + m]?.[i]; if (p != null) pluie.push(p); if (v != null) vent.push(v); });
-      if (pluie.length || vent.length) out[t] = { pluie, vent };
-    });
-    meteo.modeles = out; persistMeteo();
-  } catch (e) { /* silencieux */ }
+// Prévision heure par heure (précipitations, probabilité, rafales). Open-Meteo : « precipitation » à l'heure H = cumul de l'heure PRÉCÉDENTE (H-1 → H).
+function lireHoraire(h, modele) {
+  const out = {};
+  if (!h || !Array.isArray(h.time)) return out;
+  // avec « models=… » Open-Meteo peut suffixer les noms (precipitation_meteofrance_seamless) : on accepte les deux écritures
+  const col = nom => h[nom] || (modele && h[nom + '_' + modele]) || null;
+  const P = col('precipitation'), PR = col('precipitation_probability'), G = col('wind_gusts_10m');
+  h.time.forEach((t, i) => {
+    const d = String(t).slice(0, 10), hh = +String(t).slice(11, 13);
+    if (!(hh >= 0 && hh <= 23)) return;
+    const j = out[d] = out[d] || { p: Array(24).fill(null), pr: Array(24).fill(null), g: Array(24).fill(null) };
+    if (P) j.p[hh] = P[i];
+    if (PR) j.pr[hh] = PR[i];
+    if (G) j.g[hh] = G[i];
+  });
+  return out;
+}
+async function appelHoraire(pos, extra, modele) {
+  const url = 'https://api.open-meteo.com/v1/forecast?' + new URLSearchParams({ ...pos, hourly: 'precipitation,precipitation_probability,wind_gusts_10m', timezone: 'Europe/Paris', ...extra });
+  const r = await fetch(url); if (!r.ok) throw new Error('HTTP ' + r.status);
+  const json = await r.json();
+  const h = lireHoraire(json?.hourly, modele);
+  if (!Object.keys(h).length) throw new Error('réponse horaire vide');
+  return { h, json };
+}
+function lireMinutely(m) {
+  if (!m || !Array.isArray(m.time) || !Array.isArray(m.precipitation)) return [];
+  return m.time.map((t, i) => ({ t: String(t), mm: m.precipitation[i] })).filter(x => x.mm != null);
+}
+// Prévision heure par heure : modèle par défaut (16 jours) + quarts d'heure pour « pluie dans l'heure »,
+// et Météo-France (meteofrance_seamless) pour aujourd'hui + 3 jours. Chaque appel est indépendant et sans erreur bloquante :
+// en cas d'échec on retombe sur ce qui reste (puis sur le journalier).
+async function majHoraire(pos) {
+  const ancien = meteo.horaire, neuf = { defaut: {}, mf: {}, minutely: [], le: 0, erreur: null };
+  const [principal, mf] = await Promise.allSettled([
+    appelHoraire(pos, { forecast_days: 16, minutely_15: 'precipitation', forecast_minutely_15: 16 }).catch(() => appelHoraire(pos, { forecast_days: 16 })),
+    appelHoraire(pos, { forecast_days: SEUILS.modelesJours + 1, models: 'meteofrance_seamless' }, 'meteofrance_seamless'),
+  ]);
+  if (principal.status === 'fulfilled') { neuf.defaut = principal.value.h; neuf.minutely = lireMinutely(principal.value.json?.minutely_15); neuf.le = Date.now(); }
+  else neuf.erreur = String((principal.reason && principal.reason.message) || principal.reason);
+  if (mf.status === 'fulfilled') neuf.mf = mf.value.h;
+  meteo.horaire = neuf.le ? neuf : Object.assign({}, ancien, { erreur: neuf.erreur });
 }
 // date la plus ancienne dont on a besoin et qui manque dans le cache (passages > 92 jours)
 function joursManquants(de, a) {
@@ -304,12 +353,14 @@ function toast(msg) {
   document.body.appendChild(t); setTimeout(() => t.remove(), 2600);
 }
 function afficherPill(txt, warn = false) { const p = $('#meteoPill'); p.textContent = txt; p.classList.toggle('warn', warn); }
+// la météo est-elle inutilisable pour les alertes ? (échec de la dernière récupération, jamais récupérée, ou plus de 3 h)
+function meteoPerimee() { return !!meteo.erreur || !meteo.majLe || Date.now() - meteo.majLe > WX_ANCIEN_MS; }
 function majPill() {
   if (meteo.erreur && !Object.keys(meteo.jours).length) return afficherPill('Météo indisponible', true);
   if (meteo.erreur) return afficherPill('Météo non actualisée', true);
   if (!meteo.majLe) return afficherPill('Météo…');
   const d = new Date(meteo.majLe);
-  afficherPill(`Météo à jour ${pad(d.getHours())}:${pad(d.getMinutes())}`);
+  afficherPill(`Météo : mise à jour à ${pad(d.getHours())} h ${pad(d.getMinutes())}`, meteoPerimee());
 }
 function ligneRue(rue, { selection = false } = {}) {
   const s = statutRue(rue), today = aujourdhui();
@@ -344,17 +395,66 @@ function blocMeteo(pousse) {
   // phrase sur la pluie, avec le jour (jamais « pas de pluie » tout seul : on dit jusqu'à quand)
   const LONGS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
   const nomJour = d => d === today ? "aujourd'hui" : d === addJours(today, 1) ? 'demain' : LONGS[new Date(toUTC(d)).getUTCDay()];
-  const pluvieux = jours.filter(x => (x.j.pluie || 0) >= 2 || (x.j.proba != null && x.j.proba >= 60));
-  const forte = pluvieux.some(x => (x.j.pluie || 0) >= 10);
+  // phrase en haut à droite : calculée comme la suite de la carte (pluie dans les heures de travail, mêmes seuils)
+  const GOUTTE = '<svg class="gt-ico" viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M12 2.5C12 2.5 5.5 10 5.5 15a6.5 6.5 0 0 0 13 0c0-5-6.5-12.5-6.5-12.5z"/></svg>';
+  const niveauCarte = m => {
+    if (!m) return null;
+    const S = SEUILS.pluie, G = SEUILS.carte.gouttes, pr = m.proba;
+    if (m.mm >= S.forte.mm) return { k: 'forte', txt: 'forte pluie' };
+    if (m.mm >= S.probable.mm || (pr != null && pr >= S.probable.proba)) return { k: 'probable', txt: 'pluie probable' };
+    if (m.mm >= G.mm || (pr != null && pr >= G.proba)) return { k: 'gouttes', txt: 'gouttes possibles' };
+    return { k: 'sec', txt: 'sec' };
+  };
+  const evalJour = d => (typeof Pluie !== 'undefined' ? Pluie.evaluer(d) : null);
+  const niv = jours.map(x => { const e = evalJour(x.d); return { d: x.d, n: e ? niveauCarte(e.m) : null }; });
+  const pluvieux = niv.filter(x => x.n && (x.n.k === 'probable' || x.n.k === 'forte'));
+  const gouttes = niv.filter(x => x.n && x.n.k === 'gouttes');
+  const forte = pluvieux.length > 0 && pluvieux.every(x => x.n.k === 'forte');
   const fin = jours[jours.length - 1].d;
-  const motPluie = !pluvieux.length ? `Pas de pluie prévue jusqu'à ${nomJour(fin)}`
-    : pluvieux.length === 1 ? `${forte ? 'Forte pluie' : 'Pluie'} ${nomJour(pluvieux[0].d)}`
-    : pluvieux.length === 2 ? `${forte ? 'Forte pluie' : 'Pluie'} ${nomJour(pluvieux[0].d)} et ${nomJour(pluvieux[1].d)}`
-    : `Pluie ${pluvieux.length} jours sur ${jours.length}`;
+  const listeJours = l => l.length === 1 ? nomJour(l[0].d) : l.length === 2 ? `${nomJour(l[0].d)} et ${nomJour(l[1].d)}` : null;
+  const motPluie = pluvieux.length ? (pluvieux.length <= 2 ? `${forte ? 'Forte pluie' : 'Pluie'} ${listeJours(pluvieux)}` : `Pluie ${pluvieux.length} jours sur ${jours.length}`)
+    : gouttes.length ? (gouttes.length <= 2 ? `Gouttes possibles ${listeJours(gouttes)}` : `Gouttes possibles ${gouttes.length} jours sur ${jours.length}`)
+    : `Pas de pluie prévue jusqu'à ${nomJour(fin)}`;
   const motPousse = pousse === 'faible' ? 'peu' : pousse === 'moyenne' ? 'moyennement' : 'beaucoup';
+
+  // niveau de pluie de la carte, toujours affiché : sec / gouttes possibles / pluie probable / forte pluie (pluie en bleu)
+  const mmCourt = mm => mm < 0.05 ? '0 mm' : `${virgule(Math.round(mm * 10) / 10)} mm`;
+  const chiffres = m => `${mmCourt(m.mm)}${m.proba != null ? ` · ${Math.round(m.proba)} %` : ''}`;
+  const cellule = ({ d, j }) => {
+    const e = evalJour(d), n = e ? niveauCarte(e.m) : null, incertain = ecartJours(today, d) > SEUILS.incertainApresJours;
+    return `<div><span>${JOURS_COURTS[new Date(toUTC(d)).getUTCDay()]}</span><b>${Math.round(j.tmax)}°</b>
+      ${n ? `<span class="gt ${n.k}">${GOUTTE}${n.txt}</span><small>${mmCourt(e.m.mm)}${e.m.proba != null ? `<br>${Math.round(e.m.proba)} %` : ''}</small>` : '<small>—</small>'}
+      ${incertain ? '<small class="inc">prévision incertaine</small>' : ''}</div>`;
+  };
+  // ligne « Aujourd'hui : … » avec les heures concernées (ce qui reste de la plage de travail)
+  const R = state.reglages.heuresTravail, eAuj = evalJour(today);
+  let ligneAuj = '';
+  if (typeof Pluie !== 'undefined') {
+    if (!eAuj) ligneAuj = `Aujourd'hui : plage de travail (${R.debut} h – ${R.fin} h) terminée`;
+    else {
+      const n = niveauCarte(eAuj.m);
+      ligneAuj = `Aujourd'hui : ${n.k === 'sec' ? `sec jusqu'à ${R.fin} h` : `${n.txt}${Pluie.heuresTxt(eAuj.m)} (${chiffres(eAuj.m)})`}`;
+    }
+  }
+  // « Pluie dans l'heure » : 60 prochaines minutes (quarts d'heure), seulement si la donnée est disponible et récente
+  const ph = typeof Pluie !== 'undefined' ? Pluie.heure() : null;
+  const ligneHeure = ph ? `Pluie dans l'heure : ${ph.niv}${ph.niv === 'sec' ? '' : ` (${mmCourt(ph.mm)})`}` : '';
+  // ligne « Week-end : … » : la carte masque le week-end, mais il compte pour le lundi (sol mouillé)
+  const premier = jours[0].d, dernier = jours[jours.length - 1].d, we = [];
+  for (let d = premier; d <= dernier; d = addJours(d, 1)) { const w = new Date(toUTC(d)).getUTCDay(); if (w === 6 || w === 0) we.push(d); }
+  let ligneWE = '';
+  if (we.length) {
+    const parts = we.map(d => { const j = meteo.jours[d]; if (!j || (d > today && !j.prev)) return null; const n = niveauCarte({ mm: j.pluie || 0, proba: j.proba }); return n.k === 'sec' ? null : `${n.txt} ${LONGS[new Date(toUTC(d)).getUTCDay()]} (${chiffres({ mm: j.pluie || 0, proba: j.proba })})`; });
+    const connus = we.some(d => { const j = meteo.jours[d]; return j && (d <= today || j.prev); });
+    ligneWE = connus ? `Week-end : ${parts.filter(Boolean).join(', ') || 'sec'}` : '';
+  }
   return `<div class="met"><div class="l1"><span class="big">${Math.round(tm)} <small>°C en moyenne</small></span><span class="pl">${motPluie}</span></div>
     <div class="l2">5 prochains jours travaillés · l'herbe pousse <strong>${motPousse}</strong>${estime ? ' <span class="muted small">(estimation)</span>' : ''}</div>
-    <div class="jours">${jours.map(({ d, j }) => `<div>${JOURS_COURTS[new Date(toUTC(d)).getUTCDay()]}<b>${Math.round(j.tmax)}°</b>${(j.pluie || 0) >= 2 || (j.proba != null && j.proba >= 60) ? '<i>pluie</i>' : ''}</div>`).join('')}</div></div>`;
+    ${ligneAuj ? `<div class="l3">${esc(ligneAuj)}</div>` : ''}
+    ${ligneHeure ? `<div class="l3">${esc(ligneHeure)}</div>` : ''}
+    <div class="jours">${jours.map(cellule).join('')}</div>
+    ${ligneWE ? `<div class="l3">${esc(ligneWE)}</div>` : ''}
+    <div class="muted small" style="margin-top:6px">Pluie évaluée pendant les heures de travail (${R.debut} h – ${R.fin} h).</div></div>`;
 }
 
 function rendrePriorites() {
@@ -375,12 +475,10 @@ function rendrePriorites() {
   const uj = u / 7;
   const pousse = uj < 3 ? 'faible' : uj < 9 ? 'moyenne' : 'forte';
 
-  let html = blocMeteo(pousse);
+  let html = meteoPerimee() ? `<div class="alerte-haut rouge" role="alert"><div class="ap-ligne"><b>Météo indisponible ou ancienne : ne pas se fier aux alertes.</b>${meteo.erreur ? ` <span class="small">(${esc(meteo.erreur)})</span>` : ''}</div><button class="btn" type="button" data-act="meteo" style="margin-top:8px">Réessayer</button></div>` : '';
+  html += (typeof blocAlertePluie === 'function' ? blocAlertePluie() : '') + blocMeteo(pousse);
   if (!state.passages.length) {
     html += `<div class="notice"><strong>Pour démarrer :</strong> appuie sur <strong>+ Saisir</strong> en bas de l'écran pour noter ce qui a été fait ou ce que tu prévois. Pour plusieurs rues d'un coup, coche-les dans l'onglet <strong>Rues</strong> puis appuie sur <strong>Saisir</strong>. Tu peux aussi importer ton tableau Excel depuis l'onglet <strong>Suivi</strong>. L'appli calculera ensuite toute seule quand y retourner.</div>`;
-  }
-  if (meteo.erreur) {
-    html += `<div class="notice warn">La météo n'a pas pu être récupérée (${esc(meteo.erreur)}). Les calculs utilisent ${nObs ? 'les dernières données connues et ' : ''}des moyennes saisonnières. <button class="btn" data-act="meteo">Réessayer</button></div>`;
   }
   if (typeof blocAlertes === 'function') html += blocAlertes();
   const tousZero = ['retard', 'semaine', 'quinzaine'].every(k => !groupes[k].length);
@@ -525,6 +623,8 @@ function rendreReglages() {
         <label class="f">Seuil de base (classe 3)<input type="number" min="50" step="10" id="rSeuil" value="${R.seuilBase}"></label>
         <label class="f">Température mini de pousse (°C)<input type="number" step="0.5" id="rTbase" value="${R.tBase}"></label>
         <label class="f">Pluie de référence (mm / 10 j)<input type="number" min="1" step="1" id="rPluie" value="${R.pluieRef}"></label>
+        <label class="f">Heures de travail : début (h)<input type="number" min="0" max="22" step="1" id="rHDebut" value="${R.heuresTravail.debut}"></label>
+        <label class="f">Heures de travail : fin (h)<input type="number" min="1" max="23" step="1" id="rHFin" value="${R.heuresTravail.fin}"></label>
       </div>
       <p class="small" style="margin:14px 0 6px"><strong>Exigence par classe</strong> <span class="muted">(plus le facteur est petit, plus on revient tôt)</span></p>
       <div class="settings-grid">
@@ -749,6 +849,8 @@ view.addEventListener('click', e => {
       R.seuilBase = Math.max(50, num('#rSeuil', R.seuilBase));
       R.tBase = num('#rTbase', R.tBase);
       R.pluieRef = Math.max(1, num('#rPluie', R.pluieRef));
+      const hd = Math.round(num('#rHDebut', R.heuresTravail.debut)), hf = Math.round(num('#rHFin', R.heuresTravail.fin));
+      if (hd >= 0 && hf <= 23 && hd < hf) R.heuresTravail = { debut: hd, fin: hf }; else toast('Heures de travail : le début doit être avant la fin (0 à 23 h).');
       document.querySelectorAll('[data-fc]').forEach(i => { const v = parseFloat(i.value); if (Number.isFinite(v) && v > 0) R.facteursClasse[i.dataset.fc] = v; });
       const sf = parseFloat($('#rSeuilF')?.value); if (state.feuilles && Number.isFinite(sf) && sf >= 50) state.feuilles.seuil = sf;
       persist(); invalider(); rendre(); toast('Réglages enregistrés.');
@@ -805,6 +907,8 @@ selSecteur.innerHTML = SECTEURS.map(s => `<option value="${s.id}">${esc(s.nom)}<
 selSecteur.value = state.secteurId;
 selSecteur.addEventListener('change', () => { state.secteurId = selSecteur.value; ui.selection.clear(); persist(); invalider(); rendre(); majMeteo(true); });
 
+// appli ouverte : on revérifie toutes les 10 minutes (la météo n'est rechargée que si elle a plus de 30 minutes)
+setInterval(() => { if (!document.hidden) majMeteo(); }, 10 * 60 * 1000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { invalider(); majMeteo(); rendre(); } });
 
 /* ---------- Démarrage ---------- */
