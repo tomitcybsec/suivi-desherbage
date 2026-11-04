@@ -3,7 +3,7 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.9.40';
+const VERSION = '1.9.41';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
 const WX_MAX_AGE_MS = 3 * 3600 * 1000; // on actualise la météo toutes les 3 h au plus
@@ -13,7 +13,8 @@ const DEFAULT_REGLAGES = {
   seuilBase: 400,   // unités de pousse cumulées avant re-intervention, pour une rue de classe 3
   tBase: 5,         // °C sous lesquels l'herbe ne pousse quasiment pas
   pluieRef: 15,     // mm de pluie sur 10 jours pour une pousse "sans manque d'eau"
-  facteursClasse: { 0: 1.3, 1: 1.2, 2: 1.1, 3: 1.0, 4: 0.85, 5: 0.7 } // 5 = le plus exigeant -> seuil plus bas
+  facteursClasse: { 0: 1.3, 1: 1.2, 2: 1.1, 3: 1.0, 4: 0.85, 5: 0.7 }, // 5 = le plus exigeant -> seuil plus bas
+  heuresTravail: { debut: 7, fin: 15 } // plage de la journée sur laquelle on évalue la pluie (alertes)
 };
 /* Normales approximatives Toulouse (température moyenne °C et pluie mm/jour), utilisées
    au-delà des 16 jours de prévision ou si la météo est indisponible. */
@@ -70,7 +71,10 @@ function sauver(key, val) {
 const state = Object.assign({ passages: [], reglages: null, auteur: '', equipe: '', secteurId: null }, charger(STORE_KEY, {}));
 state.reglages = Object.assign({}, DEFAULT_REGLAGES, state.reglages || {});
 state.reglages.facteursClasse = Object.assign({}, DEFAULT_REGLAGES.facteursClasse, (state.reglages.facteursClasse || {}));
+state.reglages.heuresTravail = Object.assign({}, DEFAULT_REGLAGES.heuresTravail, (state.reglages.heuresTravail || {}));
 const meteo = Object.assign({ jours: {}, majLe: 0, erreur: null, secteurId: null }, charger(WX_KEY, {}));
+// données horaires (heure par heure) : { defaut: { 'AAAA-MM-JJ': { p: [24 mm], pr: [24 %], g: [24 km/h] } }, le: dernière mise à jour réussie }
+meteo.horaire = Object.assign({ defaut: {}, le: 0, erreur: null }, meteo.horaire || {});
 const persist = () => sauver(STORE_KEY, state);
 const persistMeteo = () => sauver(WX_KEY, meteo);
 
@@ -151,7 +155,7 @@ async function majMeteo(force = false) {
         meteo.complement = { le: Date.now(), plage: `${debut} → ${fin}`, ajoutes: Object.keys(meteo.jours).length - avant, detail: detail.join(' · ') || 'rien à compléter' };
       }
       meteo.majLe = Date.now(); meteo.erreur = null;
-      await majModeles(pos); // comparaison discrète avec d'autres modèles (Météo-France, européen) : sans erreur affichée si ça échoue
+      await majHoraire(pos); // heure par heure ; si ça échoue, on garde le fonctionnement journalier
     } catch (e) {
       meteo.erreur = String(e.message || e);
     }
@@ -160,22 +164,30 @@ async function majMeteo(force = false) {
   })();
   return meteoEnCours;
 }
-// Autres modèles de prévision (Météo-France AROME/ARPEGE, européen). Un seul essai, silencieux : sert seulement à confirmer
-// les alertes lointaines (3 jours et plus) — voir alertes.js. Sans réponse, les alertes se basent sur le modèle principal.
-async function majModeles(pos) {
+// Prévision heure par heure (précipitations, probabilité, rafales). Un seul essai, sans erreur bloquante :
+// si ça échoue, les alertes retombent sur les valeurs journalières (voir alerteMeteo dans planning.js).
+// Open-Meteo : « precipitation » à l'heure H = cumul de l'heure PRÉCÉDENTE (H-1 → H).
+function lireHoraire(h) {
+  const out = {};
+  if (!h || !Array.isArray(h.time)) return out;
+  h.time.forEach((t, i) => {
+    const d = String(t).slice(0, 10), hh = +String(t).slice(11, 13);
+    if (!(hh >= 0 && hh <= 23)) return;
+    const j = out[d] = out[d] || { p: Array(24).fill(null), pr: Array(24).fill(null), g: Array(24).fill(null) };
+    if (h.precipitation) j.p[hh] = h.precipitation[i];
+    if (h.precipitation_probability) j.pr[hh] = h.precipitation_probability[i];
+    if (h.wind_gusts_10m) j.g[hh] = h.wind_gusts_10m[i];
+  });
+  return out;
+}
+async function majHoraire(pos) {
   try {
-    const modeles = ['meteofrance_seamless', 'ecmwf_ifs025'];
-    const url = 'https://api.open-meteo.com/v1/forecast?' + new URLSearchParams({ ...pos, models: modeles.join(','), daily: 'precipitation_sum,wind_speed_10m_max', forecast_days: 7, timezone: 'Europe/Paris' });
-    const r = await fetch(url); if (!r.ok) return;
-    const d = (await r.json())?.daily; if (!d?.time) return;
-    const out = {};
-    d.time.forEach((t, i) => {
-      const pluie = [], vent = [];
-      modeles.forEach(m => { const p = d['precipitation_sum_' + m]?.[i], v = d['wind_speed_10m_max_' + m]?.[i]; if (p != null) pluie.push(p); if (v != null) vent.push(v); });
-      if (pluie.length || vent.length) out[t] = { pluie, vent };
-    });
-    meteo.modeles = out; persistMeteo();
-  } catch (e) { /* silencieux */ }
+    const url = 'https://api.open-meteo.com/v1/forecast?' + new URLSearchParams({ ...pos, hourly: 'precipitation,precipitation_probability,wind_gusts_10m', forecast_days: 16, timezone: 'Europe/Paris' });
+    const r = await fetch(url); if (!r.ok) throw new Error('HTTP ' + r.status);
+    const h = lireHoraire((await r.json())?.hourly);
+    if (!Object.keys(h).length) throw new Error('réponse horaire vide');
+    meteo.horaire = { defaut: h, le: Date.now(), erreur: null };
+  } catch (e) { meteo.horaire.erreur = String(e.message || e); }
 }
 // date la plus ancienne dont on a besoin et qui manque dans le cache (passages > 92 jours)
 function joursManquants(de, a) {
@@ -525,6 +537,8 @@ function rendreReglages() {
         <label class="f">Seuil de base (classe 3)<input type="number" min="50" step="10" id="rSeuil" value="${R.seuilBase}"></label>
         <label class="f">Température mini de pousse (°C)<input type="number" step="0.5" id="rTbase" value="${R.tBase}"></label>
         <label class="f">Pluie de référence (mm / 10 j)<input type="number" min="1" step="1" id="rPluie" value="${R.pluieRef}"></label>
+        <label class="f">Heures de travail : début (h)<input type="number" min="0" max="22" step="1" id="rHDebut" value="${R.heuresTravail.debut}"></label>
+        <label class="f">Heures de travail : fin (h)<input type="number" min="1" max="23" step="1" id="rHFin" value="${R.heuresTravail.fin}"></label>
       </div>
       <p class="small" style="margin:14px 0 6px"><strong>Exigence par classe</strong> <span class="muted">(plus le facteur est petit, plus on revient tôt)</span></p>
       <div class="settings-grid">
@@ -749,6 +763,8 @@ view.addEventListener('click', e => {
       R.seuilBase = Math.max(50, num('#rSeuil', R.seuilBase));
       R.tBase = num('#rTbase', R.tBase);
       R.pluieRef = Math.max(1, num('#rPluie', R.pluieRef));
+      const hd = Math.round(num('#rHDebut', R.heuresTravail.debut)), hf = Math.round(num('#rHFin', R.heuresTravail.fin));
+      if (hd >= 0 && hf <= 23 && hd < hf) R.heuresTravail = { debut: hd, fin: hf }; else toast('Heures de travail : le début doit être avant la fin (0 à 23 h).');
       document.querySelectorAll('[data-fc]').forEach(i => { const v = parseFloat(i.value); if (Number.isFinite(v) && v > 0) R.facteursClasse[i.dataset.fc] = v; });
       const sf = parseFloat($('#rSeuilF')?.value); if (state.feuilles && Number.isFinite(sf) && sf >= 50) state.feuilles.seuil = sf;
       persist(); invalider(); rendre(); toast('Réglages enregistrés.');
