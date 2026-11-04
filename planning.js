@@ -218,43 +218,112 @@ const Planning = (() => {
   }
 
   /* ---------- Alertes météo (pluie, vent) ----------
-     Pluie probable : ≥ 2 mm ou probabilité ≥ 60 %. Forte pluie : ≥ 10 mm. Vent fort : rafales moyennes ≥ 50 km/h.
-     Seulement pour les jours couverts par la prévision (16 jours) ; plus fiable à 2–3 jours. */
-  const SEUILS = { pluie: 2, proba: 60, forte: 10, vent: 50 };
+     Seuils : voir SEUILS dans app.js. La pluie est évaluée dans la plage des « Heures de travail » (Réglages), heure par heure
+     quand la prévision horaire est disponible ; sinon on retombe sur les valeurs de la journée entière.
+     Open-Meteo : la valeur de l'heure H est le cumul de l'heure précédente (H-1 → H), donc les valeurs H+1 … Fin couvrent Début … Fin. */
+  const RANG = { possible: 1, probable: 2, forte: 3 };
+  const NOM_NIVEAU = { possible: 'Pluie possible', probable: 'Pluie probable', forte: 'Forte pluie' };
+  const JOURS_LONG = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+  const dowD = d => new Date(toUTC(d)).getUTCDay();
+  const ouvre = d => dowD(d) !== 0 && dowD(d) !== 6;
+  const horaireOk = () => !!(meteo.horaire && meteo.horaire.le && Date.now() - meteo.horaire.le < 3 * 3600 * 1000);
+
+  // plage évaluée ce jour-là (aujourd'hui : seulement ce qui reste de la plage de travail)
+  function plage(date) {
+    const R = state.reglages.heuresTravail, today = aujourdhui();
+    let lo = R.debut; const hi = R.fin;
+    if (date === today) lo = Math.max(lo, new Date().getHours());
+    return lo < hi ? { lo, hi } : null;
+  }
+  // prévisions disponibles pour un jour : une liste de sources { id, nom, h } (h = tableau horaire ou null)
+  function sources(date) {
+    return [{ id: 'defaut', nom: 'modèle principal', h: horaireOk() ? (meteo.horaire.defaut[date] || null) : null }];
+  }
+  // mesure sur la plage : mm cumulés, probabilité max, rafales max, heures concernées
+  function mesure(date, h) {
+    const pl = plage(date); if (!pl) return null;
+    if (h) {
+      let mm = 0, pr = 0, g = 0; const idx = [];
+      for (let i = pl.lo + 1; i <= pl.hi; i++) {
+        const p = h.p[i] || 0, q = h.pr[i] || 0, w = h.g[i] || 0;
+        mm += p; pr = Math.max(pr, q); g = Math.max(g, w);
+        if (p >= 0.1 || q >= SEUILS.pluie.possible.proba) idx.push(i);
+      }
+      return { mm, proba: pr, rafales: g, horaire: true, debut: idx.length ? Math.max(pl.lo, Math.min(...idx) - 1) : null, fin: idx.length ? Math.min(pl.hi, Math.max(...idx)) : null };
+    }
+    const j = meteo.jours[date];
+    if (!j || (date > aujourdhui() && !j.prev)) return null;
+    return { mm: j.pluie || 0, proba: j.proba, rafales: j.vent, horaire: false, debut: null, fin: null };
+  }
+  function niveauPluie(m) {
+    if (!m) return null;
+    const S = SEUILS.pluie, pr = m.proba;
+    if (m.mm >= S.forte.mm) return 'forte';
+    if (m.mm >= S.probable.mm || (pr != null && pr >= S.probable.proba)) return 'probable';
+    if (m.mm >= S.possible.mm || (pr != null && pr >= S.possible.proba)) return 'possible';
+    return null;
+  }
+  // évaluation d'un jour : niveau de pluie (le plus prudent des sources), rafales, mesure retenue
+  function evaluer(date) {
+    const res = sources(date).map(s => ({ ...s, m: mesure(date, s.h) })).filter(x => x.m);
+    if (!res.length) return null;
+    res.forEach(x => { x.n = niveauPluie(x.m); });
+    const best = res.reduce((a, b) => (RANG[b.n] || 0) > (RANG[a.n] || 0) ? b : a);
+    return { niveau: best.n, m: best.m, rafales: Math.max(...res.map(x => x.m.rafales || 0)), res };
+  }
+  const quandTxt = d => { const n = ecartJours(aujourdhui(), d); return n === 0 ? "aujourd'hui" : n === 1 ? 'demain' : JOURS_LONG[dowD(d)]; };
+  const mmTxt = mm => mm < 0.05 ? '0 mm' : mm < 0.1 ? '< 0,1 mm' : `${virgule(Math.round(mm * 10) / 10)} mm`;
+  const heuresTxt = m => (m.debut != null && m.fin != null) ? ` entre ${m.debut} h et ${m.fin} h` : '';
+
+  // texte d'une alerte de pluie : « aujourd'hui entre 9 h et 12 h (1,8 mm, 70 %) »
+  function detailPluie(date, e) {
+    const m = e.m, chiffres = [mmTxt(m.mm)]; if (m.proba != null && m.proba > 0) chiffres.push(`${Math.round(m.proba)} %`);
+    return `${quandTxt(date)}${heuresTxt(m)} (${chiffres.join(', ')})`;
+  }
+  const detailVent = (date, e) => `${quandTxt(date)} : rafales jusqu'à ${Math.round(e.rafales)} km/h`;
+
+  // alerte d'un jour (pluie et/ou vent), au format historique { niveau, titre, detail }
   window.alerteMeteo = function (date) {
     const today = aujourdhui();
     if (!date || date < today) return null;
-    const j = meteo.jours[date];
-    if (!j || (date > today && !j.prev)) return null;
-    const pl = j.pluie || 0, pr = j.proba, v = j.vent;
-    const pluie = pl >= SEUILS.pluie || (pr != null && pr >= SEUILS.proba);
-    const vent = v != null && v >= SEUILS.vent;
-    if (!pluie && !vent) return null;
-    const dans = ecartJours(today, date);
-    const fiab = dans <= 3 ? '' : ' (prévision lointaine, à reconfirmer)';
-    const morceaux = [];
-    if (pluie) morceaux.push(`${virgule(pl)} mm${pr != null ? `, ${pr} % de risque` : ''}${j.heuresPluie ? `, ${Math.round(j.heuresPluie)} h de pluie` : ''}`);
-    if (vent) morceaux.push(`vent jusqu'à ${Math.round(v)} km/h`);
-    const fort = pl >= SEUILS.forte || (pr != null && pr >= 80 && pl >= 5) || vent;
-    return { niveau: fort ? 'fort' : 'moyen', titre: pluie ? (fort ? 'Forte pluie prévue' : 'Pluie probable') : 'Vent fort prévu', detail: `le ${fmtJour(date)} : ${morceaux.join(' · ')}${fiab}.` };
-  };
-  // bandeau dans Priorités : les 3 prochains jours
-  function alertesPluie() {
-    const today = aujourdhui(), lignes = [];
-    for (let k = 0; k <= 3; k++) {
-      const d = addJours(today, k), al = alerteMeteo(d); if (!al) continue;
-      const prevus = state.planning.filter(p => p.statut === 'prevu' && p.date === d);
-      lignes.push(`<div><strong>${esc(al.titre)}</strong> ${esc(al.detail)}${prevus.length ? `<br><span class="small">⚠ ${prevus.length} intervention${prevus.length > 1 ? 's' : ''} prévue${prevus.length > 1 ? 's' : ''} ce jour-là : ${prevus.map(p => esc((p.intervention || p.type) + ' · ' + Planning.lieuTexte(p))).join(' ; ')} — à reporter ou à remplacer ?</span>` : ''}</div>`);
+    const e = evaluer(date); if (!e) return null;
+    const vent = e.rafales >= SEUILS.vent.rafales;
+    if (!e.niveau && !vent) return null;
+    if (e.niveau) {
+      const fort = e.niveau === 'forte' || vent;
+      return { niveau: fort ? 'fort' : 'moyen', kind: 'pluie', niv: e.niveau, titre: NOM_NIVEAU[e.niveau], detail: detailPluie(date, e) + (vent ? ` · vent fort (rafales ${Math.round(e.rafales)} km/h)` : '') + '.' };
     }
-    return lignes.length ? `<div class="notice warn" style="margin-top:12px"><div class="small muted" style="margin-bottom:4px">Alerte météo — 3 prochains jours</div>${lignes.join('<div style="height:6px"></div>')}</div>` : '';
-  }
+    return { niveau: 'fort', kind: 'vent', titre: 'Vent fort prévu', detail: detailVent(date, e) + '.' };
+  };
+
+  // bandeau tout en haut de l'Accueil : aujourd'hui et les 3 jours suivants (jours travaillés)
+  window.blocAlertePluie = function () {
+    const R = state.alertes || {}, today = aujourdhui(), lignes = [];
+    let rouge = false;
+    for (let k = 0; k <= SEUILS.joursAlerte; k++) {
+      const d = addJours(today, k); if (!ouvre(d)) continue;
+      const e = evaluer(d); if (!e) continue;
+      const prevus = (state.planning || []).filter(p => p.statut === 'prevu' && p.date === d).length;
+      const plus = prevus ? ` <span class="small">· ${prevus} intervention${prevus > 1 ? 's' : ''} prévue${prevus > 1 ? 's' : ''} ce jour-là</span>` : '';
+      if (e.niveau && R.pluie !== false) {
+        if (e.niveau === 'forte') rouge = true;
+        lignes.push(`<div class="ap-ligne"><b>${NOM_NIVEAU[e.niveau]}</b> ${esc(detailPluie(d, e))}${plus}</div>`);
+      }
+      if (e.rafales >= SEUILS.vent.rafales && R.vent !== false) {
+        rouge = true;
+        lignes.push(`<div class="ap-ligne"><b>Vent fort</b> ${esc(detailVent(d, e))}${e.niveau ? '' : plus}</div>`);
+      }
+    }
+    if (!lignes.length) return '';
+    return `<div class="alerte-haut ${rouge ? 'rouge' : 'ambre'}" role="alert"><div class="ap-titre">Alerte météo</div>${lignes.slice(0, 5).join('')}</div>`;
+  };
 
   // bloc en haut de « Priorités » : à valider + 7 prochains jours
   window.blocPlanning = function () {
     const today = aujourdhui(), fin = addJours(today, 7);
     const L = state.planning.filter(p => p.statut === 'prevu' && p.date <= fin).sort((a, b) => a.date.localeCompare(b.date));
     const head = `<h2 style="display:flex;justify-content:space-between;align-items:center;gap:8px">Planning des 7 jours <button class="btn" data-pl="prevoir">+ Prévoir</button></h2>`;
-    const alertes = typeof blocAlertes === 'function' ? '' : alertesPluie(); // les alertes simples (alertes.js) remplacent l'ancien bandeau chiffré
+    const alertes = '';
     if (!L.length) return alertes + head + `<p class="muted small" style="margin-top:0">Rien de prévu. Touche « + Prévoir » ou coche des rues dans l'onglet Rues.</p>`;
     return alertes + head + `<div class="list">${L.map(it => carte(it)).join('')}</div>`;
   };

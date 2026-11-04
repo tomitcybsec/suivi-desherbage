@@ -3,10 +3,23 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.9.41';
+const VERSION = '1.9.42';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
 const WX_MAX_AGE_MS = 3 * 3600 * 1000; // on actualise la météo toutes les 3 h au plus
+
+/* ---------- Seuils d'alerte météo (pluie, vent) ----------
+   Tout est regroupé ici pour pouvoir les ajuster facilement. La pluie est évaluée UNIQUEMENT dans la plage des « Heures de travail »
+   (Réglages, 7 h - 15 h par défaut) : cumul en mm et probabilité maximale sur ces heures. */
+const SEUILS = {
+  pluie: {
+    possible: { mm: 0.3, proba: 40 },   // « Pluie possible » : cumul ≥ 0,3 mm OU probabilité ≥ 40 %
+    probable: { mm: 1, proba: 60 },     // « Pluie probable » : cumul ≥ 1 mm OU probabilité ≥ 60 %
+    forte: { mm: 5 }                    // « Forte pluie » : cumul ≥ 5 mm dans la plage
+  },
+  vent: { rafales: 50 },                // « Vent fort » : rafales ≥ 50 km/h (inchangé)
+  joursAlerte: 3                        // l'alerte couvre aujourd'hui et les 3 jours suivants
+};
 
 /* ---------- Réglages par défaut du modèle de repousse ---------- */
 const DEFAULT_REGLAGES = {
@@ -387,7 +400,7 @@ function rendrePriorites() {
   const uj = u / 7;
   const pousse = uj < 3 ? 'faible' : uj < 9 ? 'moyenne' : 'forte';
 
-  let html = blocMeteo(pousse);
+  let html = (typeof blocAlertePluie === 'function' ? blocAlertePluie() : '') + blocMeteo(pousse);
   if (!state.passages.length) {
     html += `<div class="notice"><strong>Pour démarrer :</strong> appuie sur <strong>+ Saisir</strong> en bas de l'écran pour noter ce qui a été fait ou ce que tu prévois. Pour plusieurs rues d'un coup, coche-les dans l'onglet <strong>Rues</strong> puis appuie sur <strong>Saisir</strong>. Tu peux aussi importer ton tableau Excel depuis l'onglet <strong>Suivi</strong>. L'appli calculera ensuite toute seule quand y retourner.</div>`;
   }
