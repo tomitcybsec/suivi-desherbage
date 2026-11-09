@@ -3,7 +3,7 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.9.46';
+const VERSION = '1.9.47';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
 const WX_MAX_AGE_MS = 30 * 60 * 1000;   // on actualise la météo si elle a plus de 30 minutes (à l'ouverture, au retour au premier plan, et toutes les 10 min appli ouverte)
@@ -914,6 +914,9 @@ setInterval(() => { if (!document.hidden) majMeteo(); }, 10 * 60 * 1000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { invalider(); majMeteo(); rendre(); } });
 
 /* ---------- Démarrage ---------- */
-rendre();
-majMeteo();
+// Le premier affichage doit attendre que TOUS les scripts soient chargés (planning.js, alertes.js, herbe.js… sont chargés après app.js) :
+// sinon, à la réouverture de l'appli avec une météo récente (pas de nouvelle récupération), la page restait à moitié affichée
+// (bloc « Dans l'heure » et alertes absents) jusqu'à un changement d'onglet.
+function demarrer() { rendre(); majMeteo(); }
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', demarrer); else demarrer();
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
