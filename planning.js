@@ -145,13 +145,23 @@ const Planning = (() => {
     const titre = type === 'fait' ? 'Intervention faite' : type === 'modifier' ? 'Modifier l\'intervention' : 'Reporter l\'intervention';
     let corps = `<p style="margin-top:0"><strong>${esc(it.type || 'Intervention')}</strong> — ${esc(Planning.lieuTexte(it))}<br><span class="muted small">prévue le ${fmtJour(it.date)}${it.agents ? ' · ' + esc(it.agents) : ''}</span></p>`;
     if (type === 'fait') {
-      corps += `<label class="f">Date de réalisation<input type="date" id="paDate" value="${aujourdhui()}" max="${aujourdhui()}"></label>`;
+      // la date proposée est la date PRÉVUE quand elle est passée (on valide souvent après coup : jour prévu ≠ jour où on clique)
+      const auj = aujourdhui(), propose = it.date <= auj ? it.date : auj, hier = addJours(auj, -1);
+      const jc = d => `${JOURS_COURTS[new Date(toUTC(d)).getUTCDay()]} ${fmtJM(d)}`;
+      const choix = [];
+      if (it.date < auj) choix.push([it.date, `Date prévue (${jc(it.date)})`]);
+      choix.push([auj, "Aujourd'hui"]);
+      if (hier !== it.date && hier >= it.date) choix.push([hier, 'Hier']);
+      corps += `<label class="f">Date de réalisation<input type="date" id="paDate" value="${propose}" max="${auj}"></label>
+        <div class="chips" style="margin:6px 0 4px">${choix.map(([d, t]) => `<button type="button" class="chipbtn${d === propose ? ' on' : ''}" data-padate="${d}">${esc(t)}</button>`).join('')}</div>
+        <p class="muted small" style="margin:0 0 6px">${it.date < auj ? `Prévue le ${jc(it.date)}. Change la date si c'était un autre jour.` : 'Choisis le jour où elle a été faite.'}</p>`;
       if (Planning.estHerbe(it)) corps += `<p class="small" style="margin:14px 0 6px"><strong>État de l'herbe en arrivant</strong></p><div class="radios">
         ${Object.entries(Planning.ETAT_TXT).map(([k, v]) => `<label><input type="radio" name="paEtat" value="${k}"><span>${esc(v)}</span></label>`).join('')}
         <label><input type="radio" name="paEtat" value="" checked><span>Non renseigné</span></label></div>`;
     } else if (type === 'modifier') {
       const prevu = it.statut === 'prevu';
-      corps += prevu ? `<label class="f">Date prévue<input type="date" id="paDate" value="${it.date}" min="${aujourdhui()}"></label>` : '';
+      corps += prevu ? `<label class="f">Date prévue<input type="date" id="paDate" value="${it.date}" min="${aujourdhui()}"></label>`
+        : it.statut === 'realise' ? `<label class="f">Date de réalisation<input type="date" id="paDateRea" value="${it.dateRealise || it.date}" max="${aujourdhui()}"></label>` : '';
       corps += `<label class="f">Agents<input type="text" id="paAgents" value="${esc(it.agents || '')}" autocomplete="off"></label>
         <div class="chips" style="margin:6px 0 10px">${Planning.annuaire().map(a => `<button type="button" class="chipbtn" data-agentadd="${esc(a.complet)}">+ ${esc(a.complet)}</button>`).join('')}</div>
         <p class="muted small" style="margin:-4px 0 10px">Pour remplacer un agent (malade, absent) : corrige le texte ci-dessus, ou touche un nom pour l'ajouter.</p>
@@ -167,6 +177,8 @@ const Planning = (() => {
   }
   dlg.addEventListener('click', e => {
     if (e.target.closest('[data-ferme]')) { dlg.close(); return; }
+    const rapide = e.target.closest('[data-padate]');
+    if (rapide) { const c = dlg.querySelector('#paDate'); if (c) c.value = rapide.dataset.padate; dlg.querySelectorAll('[data-padate]').forEach(b => b.classList.toggle('on', b === rapide)); return; }
     const ajout = e.target.closest('[data-agentadd]');
     if (ajout) { const c = dlg.querySelector('#paAgents'); if (c) c.value = [c.value.trim(), ajout.dataset.agentadd].filter(Boolean).join(', '); return; }
     if (e.target.id !== 'paOk' || !action) return;
@@ -177,6 +189,11 @@ const Planning = (() => {
       if (champDate) {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(champDate.value)) { toast('Date invalide.'); return; }
         modif.date = champDate.value;
+      }
+      const champRea = dlg.querySelector('#paDateRea');
+      if (champRea) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(champRea.value) || champRea.value > aujourdhui()) { toast('Date de réalisation invalide (pas de date future).'); return; }
+        modif.dateRealise = champRea.value;
       }
       Planning.changer(action.id, modif); dlg.close(); toast('Modifications enregistrées.'); return;
     }
