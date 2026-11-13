@@ -3,7 +3,7 @@
    Météo : Open-Meteo (gratuit, sans clé). */
 'use strict';
 
-const VERSION = '1.9.47';
+const VERSION = '1.9.48';
 const STORE_KEY = 'desherbage.v1';
 const WX_KEY = 'desherbage.meteo.v1';
 const WX_MAX_AGE_MS = 30 * 60 * 1000;   // on actualise la météo si elle a plus de 30 minutes (à l'ouverture, au retour au premier plan, et toutes les 10 min appli ouverte)
